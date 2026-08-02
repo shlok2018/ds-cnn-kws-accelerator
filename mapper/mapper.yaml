@@ -1,0 +1,22 @@
+# ============================================================================
+# mapper.yaml
+# How hard Timeloop searches for a good mapping at each design point.
+#
+# Trade-off: bigger search = better mapping found = slower. For a sweep you
+# want "good enough, fast" because you're comparing points, not squeezing the
+# last 2% out of any single one. These settings are a sane sweep default.
+# When you've picked your final design point, re-run JUST that one with a much
+# larger victory-condition for a properly optimized number.
+# ============================================================================
+
+mapper:
+  version: 0.4
+  optimization_metrics: [energy, delay]   # minimize energy, break ties on delay
+  algorithm: random_pruned                # fast, good coverage for a sweep
+  num_threads: 4                          # per-point threads (sweep.py also
+                                          # parallelizes ACROSS points)
+  victory_condition: 500                  # stop after 500 consecutive mappings
+                                          # with no improvement. Raise to a few
+                                          # thousand for the final design point.
+  timeout: 15000                          # give up on a hopeless point
+  max_permutations_per_if_visit: 16

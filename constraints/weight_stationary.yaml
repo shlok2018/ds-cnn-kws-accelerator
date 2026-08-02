@@ -1,0 +1,60 @@
+# ============================================================================
+# weight_stationary.yaml
+# Constraints that force a WEIGHT-STATIONARY dataflow.
+#
+# WHY THIS FILE EXISTS:
+# Left unconstrained, Timeloop's mapper searches ALL dataflows and hands you
+# whatever is optimal. That's great for finding the best design, but useless
+# for the comparison you need for interviews ("here's weight-stationary vs
+# output-stationary on this workload, and here's why one wins").
+#
+# So you keep THREE versions of this file:
+#   weight_stationary.yaml    <- this one (weights stay put in the PE)
+#   output_stationary.yaml    <- psums stay put, weights/inputs stream
+#   unconstrained.yaml        <- empty constraints, let the mapper win
+#
+# Run all three. The delta between "best dataflow the mapper found" and "the
+# dataflow I picked" is a real number you can talk about.
+#
+# The mechanic: weight-stationary means the WEIGHT tensor does NOT move once
+# loaded into the PE. We express that by keeping weights in weight_spad and
+# telling the mapper the weight loop lives at (or above) that level and stays
+# there across the inner temporal loops.
+# ============================================================================
+
+constraints:
+  targets:
+
+  # ---- Global buffer: hold everything, this is the on-chip staging area ----
+  - target: global_buffer
+    type: dataspace   # v4: keep/bypass live under a 'dataspace' constraint
+                      # (older 'bypass' type is no longer recognized)
+    keep: [Inputs, Weights, Outputs]
+    bypass: []
+
+  # ---- Weight scratchpad: KEEP weights here, bypass the rest ---------------
+  #   This is the heart of "weight-stationary". Weights are held in the PE's
+  #   local spad; inputs and psums do not occupy it.
+  - target: weight_spad
+    type: dataspace   # v4: keep/bypass live under a 'dataspace' constraint
+                      # (older 'bypass' type is no longer recognized)
+    keep: [Weights]
+    bypass: [Inputs, Outputs]
+
+  # ---- Accumulator scratchpad: KEEP outputs (psums) here -------------------
+  - target: accum_spad
+    type: dataspace   # v4: keep/bypass live under a 'dataspace' constraint
+                      # (older 'bypass' type is no longer recognized)
+    keep: [Outputs]
+    bypass: [Inputs, Weights]
+
+  # ---- Force the weight-related loops to be innermost & stationary ---------
+  #   permutation controls loop order; putting the weight dims (M output
+  #   channels, C input channels, R/S filter) at the PE level and holding them
+  #   is what makes weights not stream every cycle.
+  - target: weight_spad
+    type: temporal
+    permutation: [R, S, C, M, N, P, Q]   # weight dims (R,S,C,M) grouped tight
+    # No 'factors' pinned here -> mapper still tunes tile SIZES, but the ORDER
+    # (and therefore the stationarity) is fixed. This is the right amount of
+    # constraint: you dictate the dataflow, the mapper dictates the tiling.

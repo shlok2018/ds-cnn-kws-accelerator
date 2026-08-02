@@ -1,0 +1,40 @@
+# top.yaml.jinja2 -- assembles a full, schema-valid Timeloop v4 spec for the
+# DS-CNN kit, mirroring the example_designs harness. sweep.py renders this once
+# per design point (passing `problem` via jinja_parse_data), then patches the
+# PE mesh + global-buffer depth on the loaded object before calling the mapper.
+{{add_to_path(cwd())}}
+
+# ---- globals --------------------------------------------------------------
+globals:
+  version: 0.4
+  environment_variables:
+    TIMELOOP_HIDE_INCONSEQUENTIAL_STATS: 1
+  expression_custom_functions: []
+
+# ---- problem (overridable via jinja_parse_data={'problem': <path>}) --------
+{% set problem = problem | default('problems/conv_pointwise.yaml') %}
+problem: {{include(problem, 'problem')}}
+
+# ---- dataflow constraints (overridable via jinja_parse_data={'constraints': ...}) ----
+{% set constraints = constraints | default('constraints/weight_stationary.yaml') %}
+extra_mapping_constraints:
+  version: 0.4
+  targets: {{include(constraints, 'constraints.targets')}}
+
+# ---- architecture (overridable via jinja_parse_data={'arch': ...}) --------
+{% set arch = arch | default('arch/baseline_8x8.yaml') %}
+architecture: {{include(arch, 'architecture')}}
+
+# ---- top-level variables (technology + clock the components resolve) -------
+variables:
+  version: 0.4
+  technology: "45nm"
+  global_cycle_seconds: 1e-9
+
+# ---- compound component library -------------------------------------------
+components:
+  version: 0.4
+  classes: {{include_all('_components/*.yaml', 'compound_components.classes')}}
+
+# ---- mapper ---------------------------------------------------------------
+mapper: {{include('mapper/mapper.yaml', 'mapper')}}

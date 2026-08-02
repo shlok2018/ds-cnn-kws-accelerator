@@ -1,0 +1,38 @@
+# conv_depthwise  --  TRUE depthwise 3x3 (grouped, G=64) -- no cross-channel reduction
+problem:
+  version: 0.4
+  instance:
+    N: 1
+    G: 64
+    C: 1
+    M: 1
+    P: 25
+    Q: 5
+    R: 3
+    S: 3
+  shape:
+    name: "DepthwiseConv"
+    dimensions: [G, C, M, R, S, N, P, Q]
+    data_spaces:
+    - name: Weights
+      projection:
+      - [[G]]          # one filter per group/channel
+      - [[C]]
+      - [[M]]
+      - [[R]]
+      - [[S]]
+    - name: Inputs
+      projection:
+      - [[N]]
+      - [[G]]          # input channel = group (C=1 within it)
+      - [[C]]
+      - [[R], [P]]
+      - [[S], [Q]]
+    - name: Outputs
+      projection:
+      - [[N]]
+      - [[G]]          # output channel = SAME group -> depthwise tie
+      - [[M]]
+      - [[P]]
+      - [[Q]]
+      read_write: True

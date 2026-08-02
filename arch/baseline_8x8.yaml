@@ -1,0 +1,95 @@
+# ============================================================================
+# baseline_8x8.yaml
+# 8x8 weight-stationary systolic array, single-level global buffer + DRAM.
+# Timeloop/Accelergy v4 format (the "!Hierarchical / !Component" node syntax).
+#
+# This is your STARTING POINT. The parameters marked  # <-- SWEEP  are the
+# ones scripts/sweep.py will vary. Everything else is a fixed design decision
+# you can defend in the notebook.
+#
+# Mental model of the hierarchy:
+#   DRAM  (backing store, holds the whole model)
+#     |
+#   global_buffer  (on-chip SRAM, shared by all PEs)
+#     |
+#   PE array  (8x8 = 64 processing elements, each with tiny local scratchpads)
+#     |
+#   MAC  (one multiply-accumulate unit per PE)
+#
+# Datawidth is 8 bits everywhere == int8. When you get to the precision sweep
+# in Phase 3, this is the knob (8 -> 4). Note that changing it ALSO changes how
+# many words fit in each buffer, which is the interesting second-order effect.
+# ============================================================================
+
+architecture:
+  version: 0.4
+
+  nodes:
+  - !Container            # ---- top-level chip container -------------------
+    name: system
+    attributes:
+      technology: "45nm"  # <-- Accelergy's default tables are 45nm. Leave this
+                          #     for now; the whole 45nm-vs-130nm reckoning is a
+                          #     Phase 3 problem. Write a note that you know.
+      global_cycle_seconds: 1e-9   # 1 GHz. Optimistic for 45nm but fine for
+                                   # relative comparison. Don't over-think it.
+
+  - !Component            # ---- DRAM: the backing store --------------------
+    name: DRAM
+    class: DRAM
+    attributes:
+      type: "LPDDR4"      # low-power DRAM is the honest choice for an
+                          # always-on edge device
+      width: 64           # bits per access
+      datawidth: 8        # int8
+      depth: 1048576      # backing store rows. Older timeloopfe let DRAM be
+                          # depth-less ("unbounded"); the current image's schema
+                          # REQUIRES a depth on every Storage node, DRAM included.
+                          # Make it large enough to never bind (1M rows here).
+
+  - !Component            # ---- Global buffer: shared on-chip SRAM ----------
+    name: global_buffer
+    class: smartbuffer_SRAM
+    attributes:
+      # depth * width = total capacity in bits.
+      depth: 2048         # <-- SWEEP  (number of rows)
+      width: 64           # bits per row  (== 8 int8 words per row)
+      datawidth: 8
+      n_banks: 4          # <-- SWEEP (secondary; controls read/write parallelism)
+      read_bandwidth: 16  # words/cycle the GLB can feed downward
+      write_bandwidth: 16
+
+  - !Container            # ---- The PE array --------------------------------
+    name: PE
+    spatial:
+      meshX: 8            # <-- SWEEP  array width   (4, 8, 8, 16)
+      meshY: 8            # <-- SWEEP  array height  (4, 8, 16, 16)
+    # A !Container groups the 64 PEs so the mapper can spread the computation
+    # across them spatially. The actual storage + compute live below.
+
+  - !Component            # ---- Weight scratchpad, one per PE ---------------
+    name: weight_spad
+    class: smartbuffer_SRAM
+    attributes:
+      depth: 64           # holds a column of weights, kept stationary
+      width: 8
+      datawidth: 8
+      read_bandwidth: 2
+      write_bandwidth: 2
+
+  - !Component            # ---- Accumulator / psum scratchpad, one per PE ---
+    name: accum_spad
+    class: smartbuffer_SRAM
+    attributes:
+      depth: 16           # holds running partial sums
+      width: 16           # psums are wider than int8 inputs (accumulation)
+      datawidth: 16
+      read_bandwidth: 2
+      write_bandwidth: 2
+
+  - !Component            # ---- The actual multiply-accumulate --------------
+    name: mac
+    class: intmac
+    attributes:
+      multiplier_width: 8
+      adder_width: 16     # accumulate in 16 bits to avoid overflow

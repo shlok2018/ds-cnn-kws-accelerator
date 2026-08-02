@@ -1,0 +1,29 @@
+# docker-compose.yaml  --  DS-CNN accelerator Phase 1
+#
+# Runs the Timeloop+Accelergy+PyTorch tutorial image with this kit mounted at
+# /home/workspace/dscnn-accel and the exercises repo (for the known-good
+# baseline) at /home/workspace/exercises.
+#
+# Usage (Apple silicon -> arm64; the default below already picks arm64):
+#     docker compose run --rm tutorial bash
+#   then, inside the container:
+#     cd /home/workspace/dscnn-accel
+#     which timeloop-mapper && pip show pytimeloop
+#     python3 scripts/make_problems.py
+#     python3 scripts/sweep.py
+#
+# On x86 hosts run instead:  DOCKER_ARCH=amd64 docker compose run --rm tutorial bash
+
+services:
+  tutorial:
+    hostname: tutorial
+    image: timeloopaccelergy/timeloop-accelergy-pytorch:latest-${DOCKER_ARCH:-arm64}
+    working_dir: /home/workspace/dscnn-accel
+    volumes:
+      - .:/home/workspace/dscnn-accel
+      - ${EXERCISES_DIR:-/Users/shloksharma/accelergy-timeloop-infrastructure/src/timeloop-python/tests/timeloop-accelergy-exercises/workspace}:/home/workspace/exercises
+    environment:
+      - USER_UID=1000
+      - USER_GID=1000
+    stdin_open: true
+    tty: true

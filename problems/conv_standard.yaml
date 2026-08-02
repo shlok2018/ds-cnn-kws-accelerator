@@ -1,0 +1,34 @@
+# conv_standard  --  standard conv (first layer, full filter) -- array stays busy
+problem:
+  version: 0.4
+  instance:
+    N: 1
+    M: 64
+    C: 1
+    P: 25
+    Q: 5
+    R: 10
+    S: 4
+  shape:
+    name: "CNN_Layer"
+    dimensions: [C, M, R, S, N, P, Q]
+    data_spaces:
+    - name: Weights
+      projection:
+      - [[C]]
+      - [[M]]
+      - [[R]]
+      - [[S]]
+    - name: Inputs
+      projection:
+      - [[N]]
+      - [[C]]
+      - [[R], [P]]     # input row = filter row + output row (conv)
+      - [[S], [Q]]     # input col = filter col + output col
+    - name: Outputs
+      projection:
+      - [[N]]
+      - [[M]]
+      - [[P]]
+      - [[Q]]
+      read_write: True
