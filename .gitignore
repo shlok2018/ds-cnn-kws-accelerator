@@ -4,3 +4,7 @@ __pycache__/
 .DS_Store
 *.lib
 *.vvp
+paper/*.aux
+paper/*.log
+paper/*.out
+paper/*.synctex.gz
