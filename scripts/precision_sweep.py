@@ -21,8 +21,11 @@ import sweep as S
 ROOT = S.ROOT
 WEIGHTS = {"conv_standard": 1, "conv_depthwise": 4, "conv_pointwise": 4, "conv_fc": 1}
 PRECISIONS = [8, 4]
-# top-1 accuracy on Speech Commands -- FILL int4 from your quantized model.
-ACCURACY = {8: 94.4, 4: None}   # 94.4% = MLPerf Tiny DS-CNN int8 reference
+# Measured top-1 on the MLPerf Tiny KWS test set (4890 samples), post-training
+# per-channel WEIGHT-ONLY quantization of the reference model (float32 = 92.17%).
+# See kws_eval/eval_precision.py. (Full int4 on activations, or QAT, would shift
+# these -- weight-only PTQ is the conservative-but-honest first-order number.)
+ACCURACY = {8: 92.29, 4: 87.79}
 
 
 def per_inference(precision):

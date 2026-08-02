@@ -47,8 +47,9 @@ single-cycle multiply--accumulate (MAC) unit---an error we then recover $2.2\x$
 by pipelining. Along the way we correct a common depthwise-modeling pitfall that
 over-counts MACs by \approxs$64\x$ and inflates the ``depthwise starves the
 array'' narrative, and we quantify two energy levers: depthwise/pointwise
-fusion ($-23\%$) and int8$\rightarrow$int4 precision ($-50\%$). The entire flow
-is open-source and reproducible.
+fusion ($-23\%$) and int8$\rightarrow$int4 precision ($-50\%$ energy for a
+measured \approxs$4.5$-point top-1 accuracy drop). The entire flow is
+open-source and reproducible.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -276,10 +277,27 @@ activation on chip, cutting per-inference energy \approxs$23\%$.}
 \end{figure}
 
 \textbf{Precision.} Narrowing operands from int8 to int4 halves per-inference
-energy and reduces area by \approxs$23\%$ (Fig.~\ref{fig:precision}). This is the
-hardware side of the trade only; whether int4 is usable depends on the accuracy
-cost, which must be measured on the trained model and is left as an explicit
-open input rather than estimated.
+energy and reduces area by \approxs$23\%$ (Fig.~\ref{fig:precision}). To complete
+the trade rather than assume it, we measured accuracy on the MLPerf Tiny KWS test
+set (4\,890 utterances) using post-training, per-output-channel, weight-only
+quantization of the reference model. Top-1 accuracy is $92.17\%$ in float32,
+essentially unchanged at $92.29\%$ for int8 weights, and $87.79\%$ for int4
+weights---a \approxs$4.5$-point drop that buys the \approxs$50\%$ energy
+reduction (Fig.~\ref{fig:accenergy}). Two caveats are stated plainly: the energy
+point assumes int4 on \emph{both} operands whereas only weights are quantized
+here, so full int4 would cost more accuracy; and this is naive post-training
+quantization---quantization-aware training typically recovers most of the int4
+gap. The precision knob is thus a \emph{measured} accuracy--energy trade rather
+than an open assumption.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.92\columnwidth]{fig_accuracy_energy.png}
+\caption{Measured accuracy--energy trade on the MLPerf Tiny KWS test set: int4
+weight quantization halves per-inference energy for a \approxs$4.5$-point top-1
+drop. Weight-only PTQ; quantization-aware training would recover much of it.}
+\label{fig:accenergy}
+\end{figure}
 
 \begin{figure}[t]
 \centering
