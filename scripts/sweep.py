@@ -59,7 +59,7 @@ LAYERS       = ["conv_standard", "conv_depthwise", "conv_pointwise", "conv_fc"]
 
 
 def run_one(meshX, meshY, glb_depth, layer, constraints=None, dataflow="ws",
-            arch=None, victory=None):
+            arch=None, victory=None, precision=None):
     """Evaluate a single (design point, layer) and return a result dict.
 
     constraints: optional path (relative to ROOT) to a dataflow-constraint file;
@@ -95,8 +95,17 @@ def run_one(meshX, meshY, glb_depth, layer, constraints=None, dataflow="ws",
     glb = spec.architecture.find("global_buffer")
     glb.attributes["depth"] = glb_depth
 
+    # Optional operand precision (arch default is int8). Narrow the multiplier and
+    # the operand-carrying storages; the accumulator stays wide (partial sums need
+    # the range). This is the hardware knob of the precision-accuracy tradeoff.
+    if precision is not None:
+        for comp in ("DRAM", "global_buffer", "weight_spad"):
+            spec.architecture.find(comp).attributes["datawidth"] = precision
+        spec.architecture.find("mac").attributes["multiplier_width"] = precision
+
     # Unique output dir per point so parallel runs don't stomp each other.
-    tag = f"{layer}_{meshX}x{meshY}_glb{glb_depth}_{dataflow}"
+    ptag = f"_p{precision}" if precision is not None else ""
+    tag = f"{layer}_{meshX}x{meshY}_glb{glb_depth}_{dataflow}{ptag}"
     outdir = os.path.join(ROOT, "runs", tag)
     os.makedirs(outdir, exist_ok=True)
 
