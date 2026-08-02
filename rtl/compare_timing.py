@@ -1,49 +1,55 @@
 #!/usr/bin/env python3
 """
 Phase 3 timing: measured Fmax (yosys + ABC gate-level STA, sky130 130nm) vs the
-Phase-1 1 GHz clock assumption.
+Phase-1 1 GHz clock assumption -- diagnosis AND fix.
 
 The meaningful limit is the PER-MAC critical path: the array's 64 MACs run in
 parallel, so the register-to-register path is one PE's multiply + accumulate.
-(The array-level unbuffered number is ~64 ns, but that is a high-fanout broadcast
-artifact of synthesis-without-buffering that place-and-route resolves -- it is not
-the architectural limit, so we headline the per-MAC number and note the array
-value as the P&R-fixable pessimistic bound.)
+
+  DIAGNOSIS: unpipelined single-cycle MAC -> 6.8 ns -> ~147 MHz. The 1 GHz
+             assumption was ~7x optimistic.
+  FIX:       one pipeline register between the multiplier and the accumulate-adder
+             splits the path -> 3.1 ns -> ~319 MHz (2.2x), for one cycle of added
+             latency. Further stages (split the multiplier / the 32b adder) would
+             recover more, each at a latency cost.
 """
 import os
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-PE_PS  = 6816.91     # single MAC PE, delay-mapped   (rtl/reports/pe_timing.rpt)
-ARR_PS = 64687.31    # 8x8 array, unbuffered broadcast (fanout-limited)
-ASSUMED_MHZ = 1000.0 # Phase-1 predicted clock (1 GHz)
+UNPIPE_PS = 6816.91   # unpipelined MAC PE (rtl/reports/pe_timing.rpt)
+PIPE_PS   = 3130.22   # pipelined MAC PE   (rtl/reports/pe_pipe_timing.rpt)
+ASSUMED_MHZ = 1000.0  # Phase-1 predicted clock (1 GHz)
 
-pe_mhz  = 1e6 / PE_PS
-arr_mhz = 1e6 / ARR_PS
+unpipe_mhz = 1e6 / UNPIPE_PS
+pipe_mhz   = 1e6 / PIPE_PS
 
-print(f"per-MAC critical path : {PE_PS/1000:5.2f} ns  -> Fmax {pe_mhz:6.0f} MHz")
-print(f"array (unbuffered)    : {ARR_PS/1000:5.1f} ns  -> Fmax {arr_mhz:6.0f} MHz  (P&R-fixable)")
-print(f"Phase-1 assumption    : {ASSUMED_MHZ:6.0f} MHz (1 GHz)")
-print(f"\n=> the 1 GHz clock is ~{ASSUMED_MHZ/pe_mhz:.1f}x optimistic for an unpipelined")
-print("   single-cycle int8 MAC in sky130 (130 nm). The AREA prediction held to")
-print("   ~1x, but the CLOCK (hence latency/throughput) did NOT -- de-rate it, or")
-print("   pipeline the MAC (register the multiplier output) to recover frequency.")
-print("Caveat: ABC gate-level STA, no wireload/P&R; a real OpenSTA/OpenLane sign-off")
-print("   would refine both numbers (per-MAC up a little, array down a lot).")
+print(f"Phase-1 assumption        : {ASSUMED_MHZ:6.0f} MHz (1 GHz)")
+print(f"measured, unpipelined     : {UNPIPE_PS/1000:5.2f} ns -> {unpipe_mhz:4.0f} MHz "
+      f"({ASSUMED_MHZ/unpipe_mhz:.1f}x optimistic)")
+print(f"measured, pipelined (fix) : {PIPE_PS/1000:5.2f} ns -> {pipe_mhz:4.0f} MHz "
+      f"({pipe_mhz/unpipe_mhz:.2f}x recovery, +1 cycle latency)")
+print("\n=> Diagnosis: the 1 GHz clock was unrealistic for an unpipelined int8 MAC")
+print("   in 130 nm. Fix: pipeline the MAC -> 2.2x faster. Area held; the clock")
+print("   assumption did not, but it is recoverable by microarchitecture, not luck.")
+print("Caveat: ABC gate-level STA (no wireload/P&R); OpenSTA/OpenLane would refine.")
 
-fig, ax = plt.subplots(figsize=(6.5, 4.6))
-labels = ["Phase-1\nassumed", "measured\nper-MAC", "measured array\n(unbuffered, P&R-fixable)"]
-vals   = [ASSUMED_MHZ, pe_mhz, arr_mhz]
-colors = ["tab:gray", "tab:green", "#c7c7c7"]
+fig, ax = plt.subplots(figsize=(7, 4.7))
+labels = ["Phase-1\nassumed", "measured\nunpipelined", "measured\npipelined (fix)"]
+vals   = [ASSUMED_MHZ, unpipe_mhz, pipe_mhz]
+colors = ["tab:gray", "tab:red", "tab:green"]
 bars = ax.bar(labels, vals, color=colors, width=0.6)
 for b, v in zip(bars, vals):
     ax.text(b.get_x()+b.get_width()/2, v, f"{v:.0f} MHz", ha="center", va="bottom")
 ax.axhline(ASSUMED_MHZ, ls="--", color="tab:gray", lw=1)
+ax.annotate(f"pipeline: {pipe_mhz/unpipe_mhz:.1f}x",
+            xy=(2, pipe_mhz), xytext=(1.5, pipe_mhz + 180),
+            arrowprops=dict(arrowstyle="->"))
 ax.set_ylabel("max clock frequency (MHz)")
-ax.set_title(f"Phase 3 timing: 1 GHz assumption is ~{ASSUMED_MHZ/pe_mhz:.0f}x optimistic\n"
-             f"(sky130 130nm, unpipelined int8 MAC) -- pipeline or de-rate")
-ax.set_ylim(0, ASSUMED_MHZ*1.15)
+ax.set_title("Phase 3 timing: 1 GHz assumption ~7x optimistic (sky130 130nm),\n"
+             "recovered 2.2x by pipelining the MAC")
+ax.set_ylim(0, ASSUMED_MHZ * 1.15)
 plt.tight_layout()
 out = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "fig_timing.png")
 plt.savefig(out, dpi=140)

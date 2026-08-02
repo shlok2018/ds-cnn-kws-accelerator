@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Functional verification of the MAC array: self-checking vs a golden matmul.
-# Needs Icarus Verilog (brew install icarus-verilog).
+# Functional verification (self-checking vs golden matmul). Needs Icarus Verilog.
 set -e
 cd "$(dirname "$0")"
-iverilog -g2012 -o /tmp/tb_mac.vvp mac_int8.sv mac_array_8x8.sv tb_mac_array.sv
-vvp /tmp/tb_mac.vvp
+echo "== unpipelined =="
+iverilog -g2012 -o /tmp/tb_mac.vvp  mac_int8.sv      mac_array_8x8.sv      tb_mac_array.sv;      vvp /tmp/tb_mac.vvp
+echo "== pipelined =="
+iverilog -g2012 -o /tmp/tb_pipe.vvp mac_int8_pipe.sv mac_array_8x8_pipe.sv tb_mac_array_pipe.sv; vvp /tmp/tb_pipe.vvp

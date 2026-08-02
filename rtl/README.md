@@ -12,6 +12,8 @@ pre-RTL in Phase 1: a real predicted-vs-measured experiment.
 | `mac_int8.sv`      | one int8×int8 multiply-accumulate PE (output-stationary) |
 | `mac_array_8x8.sv` | 8×8 array = 64 MACs; computes an 8×8 output tile of a matmul (pointwise conv) |
 | `tb_mac_array.sv`  | self-checking testbench: 20 random trials vs a golden matmul |
+| `mac_int8_pipe.sv` / `mac_array_8x8_pipe.sv` | pipelined PE/array (reg between mult and adder) — the timing fix |
+| `tb_mac_array_pipe.sv` | self-checking TB for the pipelined array (+1 flush cycle) |
 | `synth.ys`         | yosys: synth → map to sky130hd → area report |
 | `compare_area.py`  | predicted (Accelergy 45 nm) vs measured (sky130 130 nm) |
 | `run_sim.sh` / `run_synth.sh` | one-command flows |
@@ -35,12 +37,13 @@ python3 compare_timing.py    # predicted vs measured clock
   (~615k), agrees to within ~1×. The pre-RTL model's **relative** ranking is
   validated outright and its **absolute** area to a small factor once node + P&R
   are applied — exactly the "DSE is relative" caveat, now quantified.
-- **Predicted vs measured TIMING:** gate-level STA (yosys+ABC, sky130) puts the
-  per-MAC critical path at **6.8 ns → ~147 MHz**, so the Phase-1 **1 GHz clock
-  was ~7× optimistic** for an unpipelined single-cycle int8 MAC in 130 nm. So
-  area held but the clock did not: de-rate the latency/throughput numbers, or
-  pipeline the MAC (register the multiplier output). This is the honest other
-  half of the loop — the prediction that *missed*, and why.
+- **Predicted vs measured TIMING (diagnosis + fix):** gate-level STA (yosys+ABC,
+  sky130) puts the unpipelined per-MAC critical path at **6.8 ns → ~147 MHz**, so
+  the Phase-1 **1 GHz clock was ~7× optimistic** in 130 nm. **Fix:** one pipeline
+  register between the multiplier and the accumulate-adder → **3.1 ns → ~319 MHz
+  (2.2×)** for one cycle of latency (functionally re-verified, 20/20). So area
+  held, the clock didn't — but the shortfall is recoverable by microarchitecture,
+  not luck. Further stages would recover more, each at a latency cost.
 
 ## Not done yet
 - **Sign-off timing / place-and-route** (OpenSTA + OpenLane) would refine the STA

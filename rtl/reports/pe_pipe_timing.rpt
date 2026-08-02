@@ -1,0 +1,2 @@
+# pipelined MAC PE, delay-mapped, sky130_fd_sc_hd tt_025C_1v80
+ABC: WireLoad = "none"  Gates =    814 ( 13.5 %)   Cap =  5.1 ff (  1.9 %)   Area =     3942.53 ( 86.5 %)   Delay =  3130.22 ps  ( 11.9 %)               
