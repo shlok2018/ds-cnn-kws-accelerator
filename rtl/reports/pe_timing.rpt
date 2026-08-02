@@ -1,0 +1,3 @@
+# single MAC PE, delay-mapped, sky130_fd_sc_hd tt_025C_1v80
+ABC: WireLoad = "none"  Gates =   1349 ( 12.4 %)   Cap =  5.4 ff (  1.8 %)   Area =     6567.55 ( 87.6 %)   Delay =  6816.91 ps  ( 14.2 %)               
+ABC: Start-point = pi34 (\a [7]).  End-point = po31 ($auto$rtlil.cc:3510:MuxGate$3286).

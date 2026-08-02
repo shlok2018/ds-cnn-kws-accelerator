@@ -21,20 +21,29 @@ pre-RTL in Phase 1: a real predicted-vs-measured experiment.
 ```
 ./run_sim.sh                 # needs iverilog -> "PASS: 20 ... trials match golden"
 ./run_synth.sh               # needs yosys+curl -> Chip area ~368,904 um^2
-python3 compare_area.py      # predicted vs measured
+./timing.sh                  # gate-level STA -> per-MAC critical path ~6.8 ns
+python3 compare_area.py      # predicted vs measured area
+python3 compare_timing.py    # predicted vs measured clock
 ```
 
 ## Results
 - **Functional:** 20/20 random 8×8 matmul trials match the golden model.
 - **Area (sky130 synth):** 0.369 mm² — 64 signed multipliers + 2048 accumulator
   flops (64 PEs × 32-bit), 11% sequential.
-- **Predicted vs measured:** Accelergy's 45 nm estimate (71k µm²), scaled to
+- **Predicted vs measured AREA:** Accelergy's 45 nm estimate (71k µm²), scaled to
   130 nm (~593k) and set against the synth area with a P&R-utilization correction
   (~615k), agrees to within ~1×. The pre-RTL model's **relative** ranking is
   validated outright and its **absolute** area to a small factor once node + P&R
   are applied — exactly the "DSE is relative" caveat, now quantified.
+- **Predicted vs measured TIMING:** gate-level STA (yosys+ABC, sky130) puts the
+  per-MAC critical path at **6.8 ns → ~147 MHz**, so the Phase-1 **1 GHz clock
+  was ~7× optimistic** for an unpipelined single-cycle int8 MAC in 130 nm. So
+  area held but the clock did not: de-rate the latency/throughput numbers, or
+  pipeline the MAC (register the multiplier output). This is the honest other
+  half of the loop — the prediction that *missed*, and why.
 
 ## Not done yet
-- **Timing** (Fmax vs the 1 GHz assumption) needs OpenSTA.
-- **Place-and-route** (OpenLane) for true silicon area/power.
+- **Sign-off timing / place-and-route** (OpenSTA + OpenLane) would refine the STA
+  (per-MAC up slightly, the unbuffered array number down a lot) and give true
+  silicon area/power.
 - Only the compute core is RTL; the buffers/control are modeled, not implemented.
