@@ -1,0 +1,7 @@
+read_verilog -sv mac_int8.sv mac_array_8x8.sv
+hierarchy -top mac_array_8x8
+synth -top mac_array_8x8 -flatten
+dfflibmap -liberty sky130_fd_sc_hd__tt_025C_1v80.lib
+abc -liberty sky130_fd_sc_hd__tt_025C_1v80.lib
+opt_clean
+stat -liberty sky130_fd_sc_hd__tt_025C_1v80.lib
