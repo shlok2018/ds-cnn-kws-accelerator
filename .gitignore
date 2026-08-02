@@ -8,3 +8,4 @@ paper/*.aux
 paper/*.log
 paper/*.out
 paper/*.synctex.gz
+kws_eval/
