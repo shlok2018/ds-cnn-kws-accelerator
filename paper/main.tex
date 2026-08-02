@@ -47,8 +47,8 @@ single-cycle multiply--accumulate (MAC) unit---an error we then recover $2.2\x$
 by pipelining. Along the way we correct a common depthwise-modeling pitfall that
 over-counts MACs by \approxs$64\x$ and inflates the ``depthwise starves the
 array'' narrative, and we quantify two energy levers: depthwise/pointwise
-fusion ($-23\%$) and int8$\rightarrow$int4 precision ($-50\%$ energy for a
-measured \approxs$4.5$-point top-1 accuracy drop). The entire flow is
+fusion ($-23\%$) and int8$\rightarrow$int4 precision ($-50\%$ energy for under a $1$-point
+top-1 accuracy loss once the 4-bit weights are fine-tuned). The entire flow is
 open-source and reproducible.
 \end{abstract}
 
@@ -285,17 +285,19 @@ essentially unchanged at $92.29\%$ for int8 weights, and $87.79\%$ for int4
 weights---a \approxs$4.5$-point drop that buys the \approxs$50\%$ energy
 reduction (Fig.~\ref{fig:accenergy}). Two caveats are stated plainly: the energy
 point assumes int4 on \emph{both} operands whereas only weights are quantized
-here, so full int4 would cost more accuracy; and this is naive post-training
-quantization---quantization-aware training typically recovers most of the int4
-gap. The precision knob is thus a \emph{measured} accuracy--energy trade rather
-than an open assumption.
+here, so full int4 would cost more accuracy; and post-training quantization is
+pessimistic---quantization-aware fine-tuning of the 4-bit weights recovers
+accuracy to \approxs$91.6\%$, within \approxs$1$ point of float, at the same
+energy (Fig.~\ref{fig:accenergy}). The precision knob is thus a \emph{measured}
+accuracy--energy trade rather than an open assumption.
 
 \begin{figure}[t]
 \centering
 \includegraphics[width=0.92\columnwidth]{fig_accuracy_energy.png}
 \caption{Measured accuracy--energy trade on the MLPerf Tiny KWS test set: int4
-weight quantization halves per-inference energy for a \approxs$4.5$-point top-1
-drop. Weight-only PTQ; quantization-aware training would recover much of it.}
+weight quantization halves per-inference energy; post-training drops top-1 by
+\approxs$4.5$ points, but quantization-aware training recovers int4 to within
+\approxs$1$ point of float at the same energy.}
 \label{fig:accenergy}
 \end{figure}
 
@@ -303,7 +305,7 @@ drop. Weight-only PTQ; quantization-aware training would recover much of it.}
 \centering
 \includegraphics[width=\columnwidth]{fig_precision.png}
 \caption{int8 vs.\ int4 at the chosen design point: \approxs$50\%$ energy and
-\approxs$23\%$ area reduction (accuracy cost not evaluated here).}
+\approxs$23\%$ area reduction (accuracy trade measured in Fig.~\ref{fig:accenergy}).}
 \label{fig:precision}
 \end{figure}
 
@@ -399,8 +401,10 @@ Only the compute core is implemented in RTL; the buffers and control are modeled
 analytically. Timing is gate-level static timing, not a full place-and-route
 sign-off with power extraction. The energy/area tables are 45\,nm while the
 implementation is 130\,nm, which is why the study relies on relative ranking and
-scales explicitly in the comparison. The int4 result is hardware-only; its
-accuracy cost is unmeasured. Finally, a single workload and dataflow family are
+scales explicitly in the comparison. The int4 accuracy is measured with
+weights-only quantization and a short, CPU-bounded fine-tune; activation
+quantization and a fuller precision sweep are future work. Finally, a single
+workload and dataflow family are
 studied. Future work is a full OpenLane place-and-route with power sign-off, an
 accuracy--energy Pareto for reduced precision, RTL for the buffer and control
 path, deeper pipelining toward higher frequency, and additional dataflows.

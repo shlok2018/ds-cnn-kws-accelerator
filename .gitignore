@@ -9,3 +9,6 @@ paper/*.log
 paper/*.out
 paper/*.synctex.gz
 kws_eval/
+kws_eval/data/
+kws_eval/*.npz
+rtl/openlane/runs/
