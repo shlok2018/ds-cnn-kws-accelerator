@@ -186,6 +186,18 @@ python3 compare_area.py
 python3 compare_timing.py
 ```
 
+The accuracy numbers (float32 / int8 / int4 PTQ and QAT, on the MLPerf Tiny
+`speech_commands` test set) come from `kws_eval/`. Those scripts depend on the
+[MLPerf Tiny keyword-spotting reference](https://github.com/mlcommons/tiny/tree/master/benchmark/training/keyword_spotting)
+for the trained model and the exact MFCC data pipeline, which are **not** vendored
+here (they are third-party, and the dataset is ~2 GB). To reproduce: clone that
+reference, copy in `kws_eval/eval_precision.py` (post-training int8/int4) and
+`kws_eval/qat_int4.py` (int4 quantization-aware fine-tuning), then in the pinned
+container `pip install tensorflow tf_keras tensorflow_datasets tensorflow_model_optimization pydub`
+(and set `TF_USE_LEGACY_KERAS=1`, since the reference model is a legacy
+SavedModel) and run them. `plot_accuracy_energy.py` draws the Pareto from the
+resulting numbers.
+
 ## Scope and limitations
 
 - Only the compute core is implemented in RTL. The buffers and control are
