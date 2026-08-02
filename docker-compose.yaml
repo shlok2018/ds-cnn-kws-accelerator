@@ -17,7 +17,13 @@
 services:
   tutorial:
     hostname: tutorial
-    image: timeloopaccelergy/timeloop-accelergy-pytorch:latest-${DOCKER_ARCH:-arm64}
+    # PINNED BY DIGEST for reproducibility. The upstream `latest` tag drifts
+    # (its timeloopfe is already newer than the exercises repo, which is what
+    # broke the kit's schema on first run), and the Phase-1 vs Phase-3
+    # predicted-vs-measured comparison is only valid on a fixed toolchain.
+    # This digest is the arm64 (Apple silicon) image. For x86, re-pull
+    # timeloopaccelergy/timeloop-accelergy-pytorch:latest-amd64 and swap the digest.
+    image: timeloopaccelergy/timeloop-accelergy-pytorch@sha256:3ecdd68237d34855d2046a551aada00a8a1c0452e5136b62c206113e66647863
     working_dir: /home/workspace/dscnn-accel
     volumes:
       - .:/home/workspace/dscnn-accel

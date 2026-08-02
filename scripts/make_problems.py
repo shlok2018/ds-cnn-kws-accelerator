@@ -122,10 +122,22 @@ def depthwise_yaml(name, N, G, P, Q, R, S, note):
         """)
 
 
-# ---- The three canonical layers -------------------------------------------
-# Standard + pointwise are ordinary (full) convs -> problem_yaml.
+# ---- Layer shapes: grounded in the MLPerf Tiny KWS DS-CNN reference --------
+# The reference model (input 49x10 MFCC, 12-class softmax) is:
+#   conv1 (standard) -> 4x [depthwise 3x3 + pointwise 1x1] -> avgpool -> FC(->12)
+# So a full inference runs 1 standard, 4 depthwise, 4 pointwise, 1 FC (avgpool
+# has no MACs). Those counts become the layer weights in analyze.py.
+#
+# NOTE (documented approximation): conv1 is stride-2 in the real model. We model
+# it stride-1 here -- the OUTPUT dims (P=25,Q=5) and MAC count are already
+# correct, so only conv1's input footprint is slightly understated. conv1 is 1
+# of 9 conv layers and the depthwise/pointwise blocks dominate, so the effect on
+# the per-inference total is negligible. Refine with stride coefficients if you
+# need conv1's roofline point to be exact.
+
+# Standard + pointwise + FC are ordinary (full) convs -> problem_yaml.
 full_convs = [
-    # A standard 3x3 conv: the DS-CNN's first layer. Healthy reuse.
+    # conv1: 10x4 filter, 1->64 channels. Healthy reuse.
     dict(name="conv_standard", N=1, M=64, C=1,  P=25, Q=5, R=10, S=4,
          note="standard conv (first layer, full filter) -- array stays busy"),
 
@@ -133,6 +145,11 @@ full_convs = [
     # Maps beautifully onto a systolic array.
     dict(name="conv_pointwise", N=1, M=64, C=64, P=25, Q=5, R=1, S=1,
          note="pointwise 1x1 -- pure channel mixing, array stays busy"),
+
+    # Final classifier: FC(64->12) after global avg-pool, modeled as a 1x1 conv
+    # over a 1x1 spatial map. Tiny (768 MACs) but part of a real inference.
+    dict(name="conv_fc", N=1, M=12, C=64, P=1, Q=1, R=1, S=1,
+         note="FC classifier 64->12 (post avgpool) -- negligible compute"),
 ]
 
 # Depthwise is a TRUE grouped conv (G groups of 1) -> depthwise_yaml. Each of the

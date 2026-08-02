@@ -15,6 +15,7 @@
 
 # %%
 import os
+import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
@@ -37,18 +38,37 @@ df["pes"]   = df["meshX"] * df["meshY"]
 print(df.head())
 
 # %% ---- FIGURE 1: roofline ------------------------------------------------
-# Arithmetic intensity = MACs / bytes moved. Compute-bound layers sit under
-# the flat (peak-compute) roof; memory-bound layers under the slanted
-# (bandwidth) roof. You'll compute bytes-moved from the Timeloop stats; this
-# stub plots MACs per layer as a stand-in until you wire that in.
-fig, ax = plt.subplots(figsize=(6, 4))
-by_layer = df.groupby("layer")["macs"].first()
-ax.bar(by_layer.index, by_layer.values)
-ax.set_ylabel("MACs per inference")
-ax.set_title("Fig 1. Compute per layer type (roofline input)")
-plt.xticks(rotation=15)
+# Operational intensity = MACs / bytes moved (from the DRAM operand footprints,
+# so it's the algorithmic best case) on x; achieved throughput = MACs/cycle at
+# 1 GHz (GMAC/s) on y. Peak-compute roof = num_PEs x 1 GHz. The DRAM-bandwidth
+# roof is drawn from the EFFECTIVE bandwidth implied by the most memory-bound
+# layer (empirical, so every measured point sits on/under the roof). Layers left
+# of the ridge are MEMORY-BOUND -- this is where depthwise (low reuse) and the FC
+# land, which is the real reason depthwise costs more than its tiny MAC count.
+RP = df[(df["meshX"] == 8) & (df["meshY"] == 8) & (df["glb_depth"] == 2048)].copy()
+RP["throughput"] = RP["macs"] / RP["cycles"]                 # GMAC/s @ 1 GHz
+pes  = 8 * 8
+peak = float(pes)                                            # GMAC/s (1 GHz)
+bw   = float((RP["throughput"] / RP["arith_intensity"]).max())  # effective GB/s
+ridge = peak / bw
+fig, ax = plt.subplots(figsize=(6.8, 5))
+for _, r in RP.iterrows():
+    ax.scatter(r["arith_intensity"], r["throughput"], s=80, zorder=3)
+    ax.annotate(r["layer"].replace("conv_", ""),
+                (r["arith_intensity"], r["throughput"]),
+                textcoords="offset points", xytext=(6, 5), fontsize=9)
+xs = np.logspace(-0.4, 2, 200)
+ax.plot(xs, np.minimum(peak, bw * xs), "k--", lw=1.3,
+        label=f"roofline (peak {peak:.0f} GMAC/s, ~{bw:.0f} GB/s eff)")
+ax.axvline(ridge, color="grey", ls=":", lw=0.9)
+ax.text(ridge * 1.05, peak * 0.35, f"ridge\nAI={ridge:.1f}", fontsize=8, color="grey")
+ax.set_xscale("log"); ax.set_yscale("log")
+ax.set_xlabel("operational intensity (MACs / byte)")
+ax.set_ylabel("achieved throughput (GMAC/s @ 1 GHz)")
+ax.set_title("Fig 1. Roofline @ 8x8/glb2048 -- depthwise & FC are memory-bound")
+ax.legend(fontsize=8, loc="lower right"); ax.grid(True, which="both", alpha=0.3)
 plt.tight_layout()
-plt.savefig(os.path.join(ROOT, "fig1_compute.png"), dpi=140)
+plt.savefig(os.path.join(ROOT, "fig1_roofline.png"), dpi=140)
 
 # %% ---- FIGURE 2: Pareto frontier -----------------------------------------
 # Every design point as a dot; energy vs latency; color = array size.
@@ -84,7 +104,8 @@ print("headline: 'a bigger array is WORSE for this workload, here's the data.'")
 # Aggregate each design point across all three layers (weighted by how often
 # each layer type runs in the real network -- edit the weights to match your
 # actual DS-CNN layer counts).
-layer_weights = {"conv_standard": 1, "conv_depthwise": 4, "conv_pointwise": 4}
+layer_weights = {"conv_standard": 1, "conv_depthwise": 4, "conv_pointwise": 4,
+                 "conv_fc": 1}   # MLPerf Tiny DS-CNN: 1 conv + 4 DS blocks + FC
 df["w"] = df["layer"].map(layer_weights)
 agg = (df.assign(we=df["energy_uJ"] * df["w"], wc=df["cycles"] * df["w"])
          .groupby(["array", "glb_depth"])
@@ -103,25 +124,27 @@ print("    That reasoning IS the deliverable.")
 # Fill these in from your chosen design point, then git-commit this file with
 # a dated message BEFORE you write a line of Verilog. This turns Phase 3 into
 # a real experiment: predicted-vs-measured, not a story told after the fact.
-# DRAFT (review & edit before you trust it). Values are per-inference, layer-
-# weighted std x1 / depthwise x4 / pointwise x4 (edit layer_weights above to your
-# real DS-CNN layer counts). Design point 8x8 @ glb2048 chosen for the "small
-# array" reason from the analysis: DS-CNN's <=64 channels can't fill a big array,
-# so 8x8 keeps per-PE utilization high at the smallest area. NOTE: 8x16 @ glb2048
-# is marginally better on EDP at ~1.6x the area -- swap the design point below if
-# you'd rather optimize EDP over area, and re-pull the numbers from results.csv.
+# Design point 8x8 @ glb2048, chosen for the "small array" reason from the
+# analysis: DS-CNN's <=64 channels can't fill a big array, so 8x8 keeps per-PE
+# utilization high at the smallest area. Numbers are per-inference, layer-weighted
+# to the MLPerf Tiny DS-CNN (std x1 / depthwise x4 / pointwise x4 / fc x1) and
+# come from a stronger final-point mapper search (victory=3000), which finds a
+# 100%-utilization pointwise mapping the fast sweep (victory=500) misses.
+# NOTE: 8x16 @ glb2048 is marginally better on EDP at ~1.6x the area -- swap the
+# design point below and re-pull from results.csv if you'd rather optimize EDP.
 PREDICTIONS = {
     "design_point":            "8x8, glb_depth=2048",
-    "predicted_energy_uJ":     17.12,     # weighted per-inference (Accelergy, 45nm)
+    "predicted_energy_uJ":     17.09,     # weighted per-inference (Accelergy, 45nm)
     "predicted_area_um2":      143268,    # 0.143 mm^2 (Accelergy)
-    "predicted_cycles":        81600,     # weighted per-inference (Timeloop)
+    "predicted_cycles":        49656,     # weighted per-inference (Timeloop, victory=3000)
     "predicted_clock_ghz":     1.0,       # target
     "date_committed":          "2026-08-02",
-    "note": "These are 45nm Accelergy estimates. Sky130 is 130nm; absolute "
-            "numbers will differ, ranking should mostly hold. Compare against "
-            "post-synthesis OpenLane numbers in Phase 3. Depthwise is modeled as "
-            "a true grouped conv (G=64). Per-inference = weighted sum over the "
-            "three layer types (std x1, depthwise x4, pointwise x4).",
+    "note": "45nm Accelergy estimates; Sky130 is 130nm so absolute numbers will "
+            "differ, ranking should mostly hold -- compare vs post-synthesis "
+            "OpenLane in Phase 3. Depthwise = true grouped conv (G=64). "
+            "Per-inference = weighted sum over the four layer types "
+            "(std x1, depthwise x4, pointwise x4, fc x1), final point re-optimized "
+            "at mapper victory=3000.",
 }
 for k, v in PREDICTIONS.items():
     print(f"{k:24s}: {v}")

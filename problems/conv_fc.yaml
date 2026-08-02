@@ -1,0 +1,34 @@
+# conv_fc  --  FC classifier 64->12 (post avgpool) -- negligible compute
+problem:
+  version: 0.4
+  instance:
+    N: 1
+    M: 12
+    C: 64
+    P: 1
+    Q: 1
+    R: 1
+    S: 1
+  shape:
+    name: "CNN_Layer"
+    dimensions: [C, M, R, S, N, P, Q]
+    data_spaces:
+    - name: Weights
+      projection:
+      - [[C]]
+      - [[M]]
+      - [[R]]
+      - [[S]]
+    - name: Inputs
+      projection:
+      - [[N]]
+      - [[C]]
+      - [[R], [P]]     # input row = filter row + output row (conv)
+      - [[S], [Q]]     # input col = filter col + output col
+    - name: Outputs
+      projection:
+      - [[N]]
+      - [[M]]
+      - [[P]]
+      - [[Q]]
+      read_write: True

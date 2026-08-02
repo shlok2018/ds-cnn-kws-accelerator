@@ -27,6 +27,7 @@
 # ============================================================================
 
 import os
+import re
 import csv
 import copy
 import itertools
@@ -54,11 +55,11 @@ os.chdir(ROOT)
 # pipeline works end-to-end.
 ARRAY_SHAPES = [(4, 4), (8, 8), (8, 16), (16, 16)]   # (meshX, meshY)
 GLB_DEPTHS   = [1024, 2048, 4096]                    # global buffer rows
-LAYERS       = ["conv_standard", "conv_depthwise", "conv_pointwise"]
+LAYERS       = ["conv_standard", "conv_depthwise", "conv_pointwise", "conv_fc"]
 
 
 def run_one(meshX, meshY, glb_depth, layer, constraints=None, dataflow="ws",
-            arch=None):
+            arch=None, victory=None):
     """Evaluate a single (design point, layer) and return a result dict.
 
     constraints: optional path (relative to ROOT) to a dataflow-constraint file;
@@ -78,6 +79,11 @@ def run_one(meshX, meshY, glb_depth, layer, constraints=None, dataflow="ws",
     if arch:
         jpd["arch"] = arch
     spec = tl.Specification.from_yaml_files(TOP, jinja_parse_data=jpd)
+
+    # Optional: search harder than the sweep default (mapper.yaml victory=500).
+    # Use for the FINAL chosen design point to get a properly-optimized number.
+    if victory is not None:
+        spec.mapper.victory_condition = victory
 
     # --- patch the design point into the loaded spec ---
     # Walk to the PE container and set its spatial mesh.
@@ -127,6 +133,18 @@ def run_one(meshX, meshY, glb_depth, layer, constraints=None, dataflow="ws",
     energy_per_infer_uJ = (energy_J * 1e6) if energy_J is not None else None
     area_um2 = (area_m2 * 1e12) if area_m2 is not None else None
 
+    # Operand footprints at DRAM (= the algorithmic tensor sizes) for the
+    # roofline. OutputStats.mapping carries a line like:
+    #   "DRAM [ Weights:4096 (4096) Inputs:8000 (8000) Outputs:8000 (8000) ]"
+    footprint_bytes = arith_intensity = None
+    mp = getattr(stats, "mapping", None)
+    if mp:
+        m = re.search(r"DRAM \[ Weights:(\d+).*?Inputs:(\d+).*?Outputs:(\d+)", mp)
+        if m:
+            footprint_bytes = sum(int(x) for x in m.groups())  # int8 -> 1 byte/elem
+    if macs and footprint_bytes:
+        arith_intensity = macs / footprint_bytes   # MACs per byte moved (algorithmic)
+
     return dict(
         layer=layer, meshX=meshX, meshY=meshY, glb_depth=glb_depth,
         dataflow=dataflow, ok=True,
@@ -135,6 +153,8 @@ def run_one(meshX, meshY, glb_depth, layer, constraints=None, dataflow="ws",
         cycles=cycles,
         area_um2=area_um2,
         pe_utilization=util,
+        footprint_bytes=footprint_bytes,
+        arith_intensity=arith_intensity,
         # energy-delay product: the single-number figure of merit architects love
         edp=(energy_per_infer_uJ * cycles) if (energy_per_infer_uJ and cycles) else None,
     )
