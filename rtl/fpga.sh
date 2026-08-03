@@ -19,7 +19,7 @@ yosys -q -p "read_verilog -sv $SRC; synth_ecp5 -top $TOP -json ${TOP}.json; stat
 if command -v nextpnr-ecp5 >/dev/null 2>&1; then
   echo "== nextpnr-ecp5 place & route (Fmax) =="
   nextpnr-ecp5 --${DEV} --package "$PKG" --json ${TOP}.json --textcfg ${TOP}.cfg \
-    2>&1 | grep -iE "Max frequency|Device utilisation"
+    --lpf-allow-unconstrained 2>&1 | grep -iE "Max frequency|Device utilisation|Info: Max"
   if command -v ecppack >/dev/null 2>&1; then
     ecppack ${TOP}.cfg ${TOP}.bit && echo "wrote ${TOP}.bit (flashable bitstream)"
   fi
