@@ -50,6 +50,9 @@
   .grid2{display:grid;grid-template-columns:1fr 1fr;gap:22px}
   footer{padding:34px 0 60px;color:var(--muted);font-size:.9rem}
   code{background:var(--soft);padding:2px 6px;border-radius:5px;font-size:.86em}
+  pre{background:#0f2a55;color:#e7eefb;padding:14px 16px;border-radius:10px;overflow-x:auto;
+    font-size:.82rem;line-height:1.55;margin:0 0 14px}
+  pre code{background:none;color:inherit;padding:0}
   @media(max-width:680px){
     .stats{grid-template-columns:repeat(2,1fr)}
     .grid2{grid-template-columns:1fr}
@@ -159,6 +162,28 @@
 
 <section>
   <div class="wrap">
+    <h2>How to reproduce</h2>
+    <p>Everything runs on open-source tools; full instructions and scripts are in the
+    <a href="https://github.com/shlok2018/ds-cnn-kws-accelerator">repository</a>.</p>
+    <p class="muted"><strong>Design-space exploration + energy/area models</strong> (pinned Docker image):</p>
+    <pre><code>docker compose run --rm tutorial bash
+# inside the container:
+python3 scripts/make_problems.py
+python3 scripts/sweep.py
+MPLBACKEND=Agg python3 scripts/analyze.py</code></pre>
+    <p class="muted"><strong>RTL: verify, synthesize, and time</strong> (Icarus Verilog + Yosys):</p>
+    <pre><code>cd rtl
+./run_sim.sh       # functional check vs a golden matmul
+./run_synth.sh     # synthesis to sky130 -> area
+./timing.sh        # gate-level STA -> critical path / Fmax
+bash fpga.sh       # map to an ECP5 FPGA (+ nextpnr for a bitstream)</code></pre>
+    <p class="muted">The Sky130 place-and-route (OpenLane) and the FPGA bitstream flow run on an
+    x86 Linux box or a GitHub Codespace &mdash; see the repository README.</p>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
     <h2>Scope</h2>
     <p class="note">This is a rigorous, reproducible <strong>validation case study</strong>, not a claim of a
     new state-of-the-art accelerator. The constituent techniques — the DS-CNN model, weight-stationary
@@ -172,6 +197,10 @@
   <div class="wrap">
     <p><a href="paper/main.pdf">Paper (PDF)</a> ·
        <a href="https://github.com/shlok2018/ds-cnn-kws-accelerator">Source &amp; reproduce on GitHub</a></p>
+    <p><strong>Shlok Sharma</strong> · Northeastern University ·
+       <a href="mailto:sharma.shlok@northeastern.edu">sharma.shlok@northeastern.edu</a>
+       <!-- LINKEDIN: replace the href below with your profile URL, then uncomment -->
+       <!-- · <a href="https://www.linkedin.com/in/YOUR-HANDLE">LinkedIn</a> --></p>
     <p>Built with open-source tools: Timeloop, Accelergy, Yosys, OpenLane, nextpnr, SkyWater sky130 PDK.</p>
   </div>
 </footer>
