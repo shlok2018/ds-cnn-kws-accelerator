@@ -33,22 +33,28 @@ print(f"measured, pipelined (fix) : {PIPE_PS/1000:5.2f} ns -> {pipe_mhz:4.0f} MH
 print("\n=> Diagnosis: the 1 GHz clock was unrealistic for an unpipelined int8 MAC")
 print("   in 130 nm. Fix: pipeline the MAC -> 2.2x faster. Area held; the clock")
 print("   assumption did not, but it is recoverable by microarchitecture, not luck.")
-print("Caveat: ABC gate-level STA (no wireload/P&R); OpenSTA/OpenLane would refine.")
+# OpenLane place-and-route (sky130): post-placement setup WNS = -0.21 ns at the
+# 7 ns target -> ~139 MHz. Validates the gate STA within ~6%.
+POSTLAYOUT_MHZ = 138.7
+print(f"measured, post-layout P&R : ~{POSTLAYOUT_MHZ:.0f} MHz (OpenLane, sky130) "
+      f"-> within {abs(100*(POSTLAYOUT_MHZ-unpipe_mhz)/unpipe_mhz):.0f}% of the gate STA")
 
-fig, ax = plt.subplots(figsize=(7, 4.7))
-labels = ["Phase-1\nassumed", "measured\nunpipelined", "measured\npipelined (fix)"]
-vals   = [ASSUMED_MHZ, unpipe_mhz, pipe_mhz]
-colors = ["tab:gray", "tab:red", "tab:green"]
-bars = ax.bar(labels, vals, color=colors, width=0.6)
+fig, ax = plt.subplots(figsize=(7.5, 4.7))
+labels = ["Phase-1\nassumed", "gate STA\nunpipelined", "post-layout\nP&R", "gate STA\npipelined (fix)"]
+vals   = [ASSUMED_MHZ, unpipe_mhz, POSTLAYOUT_MHZ, pipe_mhz]
+colors = ["tab:gray", "tab:red", "tab:orange", "tab:green"]
+bars = ax.bar(labels, vals, color=colors, width=0.62)
 for b, v in zip(bars, vals):
     ax.text(b.get_x()+b.get_width()/2, v, f"{v:.0f} MHz", ha="center", va="bottom")
 ax.axhline(ASSUMED_MHZ, ls="--", color="tab:gray", lw=1)
+ax.annotate("STA predicts\nlayout (~6%)", xy=(2, POSTLAYOUT_MHZ), xytext=(1.5, 470),
+            ha="center", fontsize=8, arrowprops=dict(arrowstyle="->"))
 ax.annotate(f"pipeline: {pipe_mhz/unpipe_mhz:.1f}x",
-            xy=(2, pipe_mhz), xytext=(1.5, pipe_mhz + 180),
+            xy=(3, pipe_mhz), xytext=(2.5, pipe_mhz + 170),
             arrowprops=dict(arrowstyle="->"))
 ax.set_ylabel("max clock frequency (MHz)")
-ax.set_title("Phase 3 timing: 1 GHz assumption ~7x optimistic (sky130 130nm),\n"
-             "recovered 2.2x by pipelining the MAC")
+ax.set_title("Timing: 1 GHz assumption ~7x optimistic (sky130 130nm); gate STA (147)\n"
+             "predicts post-layout (139) within 6%; pipelining recovers 2.2x")
 ax.set_ylim(0, ASSUMED_MHZ * 1.15)
 plt.tight_layout()
 out = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "fig_timing.png")

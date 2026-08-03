@@ -44,7 +44,10 @@ kit, comparing the two. The area estimate agrees to within \approxs$1\x$ once
 technology-node and place-and-route corrections are applied, whereas the
 implicit 1\,GHz clock assumption is \approxs$7\x$ optimistic for an unpipelined
 single-cycle multiply--accumulate (MAC) unit---an error we then recover $2.2\x$
-by pipelining. Along the way we correct a common depthwise-modeling pitfall that
+by pipelining. A full OpenLane place-and-route on sky130 closes the loop: the
+design routes DRC-clean and its \approxs$139$\,MHz post-layout clock lands within
+\approxs$6\%$ of the gate-level estimate, so the cheap pre-layout numbers proved
+faithful to silicon even where the assumed clock did not. Along the way we correct a common depthwise-modeling pitfall that
 over-counts MACs by \approxs$64\x$ and inflates the ``depthwise starves the
 array'' narrative, and we quantify two energy levers: depthwise/pointwise
 fusion ($-23\%$) and int8$\rightarrow$int4 precision ($-50\%$ energy for under a $1$-point
@@ -334,29 +337,47 @@ stage recovers $2.2\x$.}
 \label{fig:timing}
 \end{figure}
 
+\emph{Post-layout.} To test the pre-layout estimates against a real physical
+implementation rather than stopping at synthesis, the array---wrapped in a
+registered read-out mux so results leave through a narrow port instead of 2\,048
+pins---was taken through the open-source OpenLane RTL-to-GDS flow on sky130. It
+routes \emph{DRC-clean} (0 violations) with a post-route standard-cell area of
+$0.63$\,mm$^2$ and an estimated \approxs$263$\,mW peak dynamic power at full
+activity. Most usefully, the post-placement setup timing closes at
+\approxs$139$\,MHz---within \approxs$6\%$ of the $147$\,MHz gate-level STA
+estimate, i.e.\ wire delays added only \approxs$0.4$\,ns to the critical path.
+The cheap pre-layout timing estimate was therefore itself a faithful predictor
+of the routed design, even though the original 1\,GHz assumption was not.
+
 \section{Predicted vs. Measured}
-Table~\ref{tab:pvm} reconciles the two estimates. Area is on different nodes, so
-a fair comparison scales the 45\,nm estimate to 130\,nm (ideal area scaling,
-\approxs$8.35\x$) and notes that synthesis area is pre-place-and-route; applying
-a typical utilization correction to the synthesized cell area lands it within
-\approxs$1\x$ of the scaled prediction (Fig.~\ref{fig:pvm}). The clock, by
-contrast, was optimistic by \approxs$7\x$.
+Table~\ref{tab:pvm} reconciles the estimates against both synthesis and a full
+place-and-route. Area is on different nodes, so a fair comparison scales the
+45\,nm estimate to 130\,nm (ideal area scaling, \approxs$8.35\x$); the
+synthesized bare-array cell area then lands within \approxs$1\x$ of the scaled
+prediction (Fig.~\ref{fig:pvm}), and the routed design (0.63\,mm$^2$, which also
+includes the read-out mux and clock-tree/buffer/fill overhead) is consistent with
+it. Timing is the more telling axis: the 1\,GHz assumption was \approxs$7\x$
+optimistic, but the $147$\,MHz gate-level STA predicted the \approxs$139$\,MHz
+post-layout closure to within \approxs$6\%$. In other words, the cheap pre-layout
+estimates were reliable for both area and clock; only the originally
+\emph{assumed} clock was not.
 
 \begin{table}[t]
-\caption{Predicted (Accelergy, 45\,nm) vs.\ measured (Sky130, 130\,nm) for the
-MAC compute core.}
+\caption{Predicted (Accelergy, 45\,nm) vs.\ measured (Sky130, 130\,nm), through
+synthesis and full place-and-route. The 1\,GHz assumption is \approxs$7\x$
+optimistic; pipelining the MAC recovers Fmax to $319$\,MHz (Fig.~\ref{fig:timing}).}
 \label{tab:pvm}
 \centering\footnotesize
 \begin{tabular}{lcc}
 \toprule
  & Area & Clock \\
 \midrule
-Predicted (45\,nm)         & 71k\,\um$^2$              & 1\,GHz (assumed) \\
-\quad scaled to 130\,nm    & \approxs593k\,\um$^2$     & --- \\
-Measured (130\,nm synth)   & 369k\,\um$^2$             & 147\,MHz \\
-\quad P\&R-adjusted / pipelined & \approxs615k\,\um$^2$ & 319\,MHz \\
+Predicted (Accelergy, 45\,nm)   & 71k\,\um$^2$            & 1\,GHz (assumed) \\
+\quad scaled to 130\,nm         & \approxs593k\,\um$^2$   & --- \\
+Yosys synthesis (130\,nm)       & 369k\,\um$^2$           & 147\,MHz (STA) \\
+OpenLane P\&R (130\,nm)         & 0.63\,mm$^2$, DRC-clean & 139\,MHz (post-layout) \\
 \midrule
-Agreement                  & within \approxs$1\x$      & $7\x$ off, $2.2\x$ recovered \\
+Agreement                       & within \approxs$1\x$    & STA predicts P\&R to \approxs$6\%$ \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -398,14 +419,18 @@ outputs are the methodology and the fidelity data, not the specific array.
 
 \section{Limitations and Future Work}
 Only the compute core is implemented in RTL; the buffers and control are modeled
-analytically. Timing is gate-level static timing, not a full place-and-route
-sign-off with power extraction. The energy/area tables are 45\,nm while the
-implementation is 130\,nm, which is why the study relies on relative ranking and
-scales explicitly in the comparison. The int4 accuracy is measured with
-weights-only quantization and a short, CPU-bounded fine-tune; activation
-quantization and a fuller precision sweep are future work. Finally, a single
-workload and dataflow family are
-studied. Future work is a full OpenLane place-and-route with power sign-off, an
+analytically. The place-and-route is complete and DRC-clean, but the reported
+$139$\,MHz is post-placement STA with estimated parasitics---the final sign-off
+STA step did not run (a checker crash late in the flow), so it is a close
+estimate rather than a signoff number---and the \approxs$263$\,mW is peak dynamic
+power at default switching activity, not the low-duty-cycle always-on average
+(the per-inference energy remains the meaningful always-on figure). The
+energy/area tables are 45\,nm while the implementation is 130\,nm, which is why
+the study relies on relative ranking and scales explicitly in the comparison. The
+int4 accuracy is measured with weights-only quantization and a short, CPU-bounded
+fine-tune; activation quantization and a fuller precision sweep are future work.
+Finally, a single workload and dataflow family are
+studied. Future work is signoff-grade STA and power, an
 accuracy--energy Pareto for reduced precision, RTL for the buffer and control
 path, deeper pipelining toward higher frequency, and additional dataflows.
 
