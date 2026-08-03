@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DS-CNN Keyword-Spotting Accelerator — DSE to Silicon</title>
+<meta name="description" content="Analytical design-space exploration and open-flow silicon validation of a depthwise-separable CNN keyword-spotting accelerator: Timeloop/Accelergy, Sky130 ASIC (OpenLane), and ECP5 FPGA.">
+<meta name="author" content="Shlok Sharma">
+<style>
+  :root{
+    --bg:#ffffff; --ink:#12213b; --muted:#5b6b85;
+    --accent:#1f5fbf; --accent-d:#173f80; --soft:#f4f7fb; --card:#ffffff;
+    --line:#e6ecf3;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    line-height:1.65;-webkit-font-smoothing:antialiased}
+  a{color:var(--accent);text-decoration:none}
+  a:hover{text-decoration:underline}
+  .wrap{max-width:920px;margin:0 auto;padding:0 22px}
+  header{background:linear-gradient(180deg,#0f2a55 0%,#1a3f7a 100%);color:#fff;padding:64px 0 52px}
+  header .wrap{max-width:920px}
+  .kicker{letter-spacing:.14em;text-transform:uppercase;font-size:.72rem;color:#bcd2f2;font-weight:700;margin:0 0 14px}
+  h1{font-size:1.9rem;line-height:1.25;margin:0 0 14px;font-weight:750}
+  .byline{color:#d6e4f7;margin:0 0 26px;font-size:1.02rem}
+  .btns{display:flex;flex-wrap:wrap;gap:12px}
+  .btn{display:inline-block;padding:11px 18px;border-radius:9px;font-weight:650;font-size:.95rem}
+  .btn.primary{background:#fff;color:var(--accent-d)}
+  .btn.ghost{background:rgba(255,255,255,.12);color:#fff;border:1px solid rgba(255,255,255,.35)}
+  .btn:hover{text-decoration:none;opacity:.94}
+  section{padding:44px 0;border-bottom:1px solid var(--line)}
+  h2{font-size:1.28rem;margin:0 0 16px;font-weight:720}
+  p{margin:0 0 14px;color:#26364f}
+  .muted{color:var(--muted)}
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:6px}
+  .stat{background:var(--soft);border:1px solid var(--line);border-radius:12px;padding:16px}
+  .stat .n{font-size:1.35rem;font-weight:760;color:var(--accent-d)}
+  .stat .l{font-size:.82rem;color:var(--muted);margin-top:3px}
+  ul.clean{margin:0;padding-left:20px}
+  ul.clean li{margin:0 0 9px}
+  figure{margin:24px 0}
+  figure img{width:100%;height:auto;border:1px solid var(--line);border-radius:12px;background:#fff}
+  figcaption{font-size:.86rem;color:var(--muted);margin-top:9px}
+  table{width:100%;border-collapse:collapse;font-size:.92rem;margin-top:6px}
+  th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line)}
+  th{color:var(--muted);font-weight:650;font-size:.8rem;text-transform:uppercase;letter-spacing:.03em}
+  td.k{font-weight:650}
+  .note{background:var(--soft);border-left:4px solid var(--accent);border-radius:8px;padding:14px 16px;color:#33445f;font-size:.95rem}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:22px}
+  footer{padding:34px 0 60px;color:var(--muted);font-size:.9rem}
+  code{background:var(--soft);padding:2px 6px;border-radius:5px;font-size:.86em}
+  @media(max-width:680px){
+    .stats{grid-template-columns:repeat(2,1fr)}
+    .grid2{grid-template-columns:1fr}
+    h1{font-size:1.55rem}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <p class="kicker">Hardware Accelerator · Model↔Silicon Co-Design</p>
+    <h1>Analytical Design-Space Exploration and Silicon Validation of a Depthwise-Separable CNN Keyword-Spotting Accelerator</h1>
+    <p class="byline">Shlok Sharma · Northeastern University</p>
+    <div class="btns">
+      <a class="btn primary" href="paper/main.pdf">Read the paper (PDF)</a>
+      <a class="btn ghost" href="https://github.com/shlok2018/ds-cnn-kws-accelerator">View code on GitHub</a>
+    </div>
+  </div>
+</header>
+
+<section>
+  <div class="wrap">
+    <div class="stats">
+      <div class="stat"><div class="n">0.63 mm²</div><div class="l">Sky130 ASIC, DRC-clean layout</div></div>
+      <div class="stat"><div class="n">~139 MHz</div><div class="l">post-layout clock (ASIC)</div></div>
+      <div class="stat"><div class="n">~54 MHz</div><div class="l">ECP5 FPGA, flashable bitstream</div></div>
+      <div class="stat"><div class="n">17.1 µJ</div><div class="l">energy per inference (45 nm)</div></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>Abstract</h2>
+    <p>Always-on keyword spotting runs on billions of battery-powered edge devices, which makes
+    per-inference energy a first-order design constraint. Architects routinely prune an accelerator
+    design space with fast analytical models (Timeloop/Accelergy) long before committing to RTL,
+    yet the fidelity of those early estimates against real silicon is seldom quantified end to end
+    on an open, reproducible flow. This project closes that loop for a depthwise-separable CNN (DS-CNN)
+    keyword-spotting accelerator: an analytical design-space exploration with <em>committed</em>
+    pre-RTL predictions, then a synthesizable implementation carried to the open-source SkyWater
+    130&nbsp;nm PDK. The area estimate agrees to within ~1× after node and place-and-route corrections,
+    while the implicit 1&nbsp;GHz clock assumption is ~7× optimistic — an error recovered 2.2× by
+    pipelining. A full OpenLane place-and-route routes DRC-clean at ~139&nbsp;MHz (within ~6% of the
+    gate-level estimate), and the same RTL also maps to a Lattice ECP5 FPGA with a flashable bitstream.
+    Along the way, a common depthwise-modeling pitfall (over-counting MACs ~64×) is corrected, and two
+    energy levers are quantified: depthwise/pointwise fusion (−23%) and int8→int4 precision (−50% energy
+    for under a 1-point top-1 accuracy loss with quantization-aware training).</p>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>Highlights</h2>
+    <ul class="clean">
+      <li>An open, end-to-end <strong>predict-then-measure</strong> loop: analytical DSE with
+      predictions committed <em>before</em> RTL, then implemented on an open PDK.</li>
+      <li>A two-sided fidelity result — early <strong>area</strong> estimates held to ~1×, but the
+      assumed <strong>clock</strong> was ~7× optimistic (recovered 2.2× by pipelining).</li>
+      <li>Corrected a modeling pitfall that inflated the "depthwise starves the array" narrative
+      (a naive full convolution over-counts depthwise MACs ~64×).</li>
+      <li>Two grounded energy levers — <strong>fusion</strong> (−23%) and <strong>int4 precision</strong>
+      (−50% energy, accuracy recovered to &lt;1% of float via QAT).</li>
+      <li>Characterized on <strong>both</strong> a Sky130 ASIC flow and an ECP5 FPGA — fully
+      reproducible, open-source tools only.</li>
+    </ul>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>Selected results</h2>
+    <figure>
+      <img src="fig1_roofline.png" alt="Roofline">
+      <figcaption><strong>Roofline.</strong> Depthwise and FC layers are memory-bound (low arithmetic
+      intensity); standard and pointwise are compute-bound — the real reason depthwise costs more than
+      its tiny MAC count, and the motivation for the fusion optimization.</figcaption>
+    </figure>
+    <div class="grid2">
+      <figure>
+        <img src="fig_accuracy_energy.png" alt="Accuracy vs energy">
+        <figcaption><strong>Accuracy–energy.</strong> int4 with quantization-aware training reaches
+        ~half the int8 energy for &lt;1% accuracy loss (measured on the MLPerf Tiny test set).</figcaption>
+      </figure>
+      <figure>
+        <img src="fig_timing.png" alt="Timing">
+        <figcaption><strong>Timing.</strong> The 1&nbsp;GHz assumption is ~7× optimistic; a one-stage
+        pipeline recovers 2.2×, and gate-level STA predicts the post-layout clock within ~6%.</figcaption>
+      </figure>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>Two implementation flows</h2>
+    <table>
+      <tr><th></th><th>ASIC — Sky130 (OpenLane)</th><th>FPGA — ECP5-45 (Yosys+nextpnr)</th></tr>
+      <tr><td class="k">Result</td><td>DRC-clean routed layout</td><td>flashable bitstream</td></tr>
+      <tr><td class="k">Area / size</td><td>0.63 mm²</td><td>64 DSPs, 4.4k LUT, 4.1k FF</td></tr>
+      <tr><td class="k">Clock</td><td>~139 MHz (post-layout)</td><td>~54 MHz (post-route)</td></tr>
+      <tr><td class="k">Power</td><td>~263 mW (peak)</td><td>—</td></tr>
+    </table>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>Scope</h2>
+    <p class="note">This is a rigorous, reproducible <strong>validation case study</strong>, not a claim of a
+    new state-of-the-art accelerator. The constituent techniques — the DS-CNN model, weight-stationary
+    arrays, Timeloop/Accelergy exploration, layer fusion, quantization — are established. The contribution
+    is their integration into one open predict-then-measure loop, the quantified fidelity of analytical
+    models against real silicon, and the corrected modeling pitfall.</p>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <p><a href="paper/main.pdf">Paper (PDF)</a> ·
+       <a href="https://github.com/shlok2018/ds-cnn-kws-accelerator">Source &amp; reproduce on GitHub</a></p>
+    <p>Built with open-source tools: Timeloop, Accelergy, Yosys, OpenLane, nextpnr, SkyWater sky130 PDK.</p>
+  </div>
+</footer>
+
+</body>
+</html>
