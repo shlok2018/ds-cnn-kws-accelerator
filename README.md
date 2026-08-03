@@ -200,8 +200,10 @@ resulting numbers.
 
 ## Scope and limitations
 
-- Only the compute core is implemented in RTL. The buffers and control are
-  modeled analytically, not built.
+- The compute core, control FSM, and operand/result buffers are implemented in
+  RTL and verified (`rtl/accel_top.sv`); the accelerator also maps to an ECP5
+  FPGA at ~54 MHz with a bitstream (`rtl/fpga.sh`). The buffers are behavioral
+  registers, not dense SRAM macros.
 - Timing is gate-level static timing (Yosys/ABC with the sky130 cell library),
   not a full OpenSTA/OpenLane sign-off with place-and-route. The numbers are
   first-order, not tape-out grade.

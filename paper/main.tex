@@ -349,6 +349,13 @@ estimate, i.e.\ wire delays added only \approxs$0.4$\,ns to the critical path.
 The cheap pre-layout timing estimate was therefore itself a faithful predictor
 of the routed design, even though the original 1\,GHz assumption was not.
 
+\emph{FPGA.} The same RTL is not ASIC-only. The full accelerator (control FSM,
+operand/result buffers, and the array) also maps to a Lattice ECP5-45 through the
+open Yosys\,+\,nextpnr flow, using 64 DSP multipliers (one per PE), \approxs$4.4$k
+LUTs, and \approxs$4.1$k flip-flops, and places-and-routes to \approxs$54$\,MHz
+with a flashable bitstream. It is slower than the sky130 ASIC, as FPGA fabric
+generally is, but it makes the design runnable today on a low-cost board.
+
 \section{Predicted vs. Measured}
 Table~\ref{tab:pvm} reconciles the estimates against both synthesis and a full
 place-and-route. Area is on different nodes, so a fair comparison scales the
@@ -418,8 +425,10 @@ compute core here is illustrative rather than a product; the transferable
 outputs are the methodology and the fidelity data, not the specific array.
 
 \section{Limitations and Future Work}
-Only the compute core is implemented in RTL; the buffers and control are modeled
-analytically. The place-and-route is complete and DRC-clean, but the reported
+The compute core, control FSM, and operand/result buffers are all implemented in
+RTL and verified (and the accelerator also maps to an ECP5 FPGA at \approxs$54$\,MHz
+with a bitstream); the buffers are behavioral registers, not dense SRAM macros.
+The place-and-route is complete and DRC-clean, but the reported
 $139$\,MHz is post-placement STA with estimated parasitics---the final sign-off
 STA and layout-vs-schematic (LVS) steps did not run (a late-flow checker crash,
 and detailed routing is run-to-run non-deterministic), so it is a close estimate
@@ -432,8 +441,9 @@ int4 accuracy is measured with weights-only quantization and a short, CPU-bounde
 fine-tune; activation quantization and a fuller precision sweep are future work.
 Finally, a single workload and dataflow family are
 studied. Future work is signoff-grade STA, power, and LVS, an
-accuracy--energy Pareto for reduced precision, RTL for the buffer and control
-path, deeper pipelining toward higher frequency, and additional dataflows.
+accuracy--energy Pareto for reduced precision, dense SRAM-macro buffers and
+on-board FPGA bring-up, deeper pipelining toward higher frequency, and additional
+dataflows.
 
 \section{Conclusion}
 We carried a DS-CNN keyword-spotting accelerator from an analytical design-space
