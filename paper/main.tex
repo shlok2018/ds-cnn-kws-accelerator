@@ -209,7 +209,7 @@ smallest area---despite the larger arrays offering more raw compute.
 
 \begin{figure}[t]
 \centering
-\includegraphics[width=\columnwidth]{fig2_pareto.png}
+\includegraphics[width=\columnwidth]{fig2_pareto.pdf}
 \caption{Energy--latency Pareto front across array shapes and buffer depths.
 Larger arrays add compute the small-channel workload cannot use.}
 \label{fig:pareto}
@@ -244,7 +244,7 @@ arithmetic---and it motivates the fusion optimization below.
 
 \begin{figure}[t]
 \centering
-\includegraphics[width=\columnwidth]{fig1_roofline.png}
+\includegraphics[width=\columnwidth]{fig1_roofline.pdf}
 \caption{Roofline for the chosen design point. Depthwise and FC are
 memory-bound; standard and pointwise are compute-bound.}
 \label{fig:roofline}
@@ -276,7 +276,7 @@ selected, an internal consistency check on the design point.
 
 \begin{figure}[t]
 \centering
-\includegraphics[width=0.86\columnwidth]{fig_fusion.png}
+\includegraphics[width=0.86\columnwidth]{fig_fusion.pdf}
 \caption{Depthwise$\rightarrow$pointwise fusion keeps the intermediate
 activation on chip, cutting per-inference energy \approxs$23\%$.}
 \label{fig:fusion}
@@ -299,7 +299,7 @@ accuracy--energy trade rather than an open assumption.
 
 \begin{figure}[t]
 \centering
-\includegraphics[width=0.92\columnwidth]{fig_accuracy_energy.png}
+\includegraphics[width=0.92\columnwidth]{fig_accuracy_energy.pdf}
 \caption{Measured accuracy--energy trade on the MLPerf Tiny KWS test set: int4
 weight quantization halves per-inference energy; post-training drops top-1 by
 \approxs$4.5$ points, but quantization-aware training recovers int4 to within
@@ -309,7 +309,7 @@ weight quantization halves per-inference energy; post-training drops top-1 by
 
 \begin{figure}[t]
 \centering
-\includegraphics[width=\columnwidth]{fig_precision.png}
+\includegraphics[width=\columnwidth]{fig_precision.pdf}
 \caption{int8 vs.\ int4 at the chosen design point: \approxs$50\%$ energy and
 \approxs$23\%$ area reduction (accuracy trade measured in Fig.~\ref{fig:accenergy}).}
 \label{fig:precision}
@@ -334,7 +334,7 @@ latency, functionally re-verified (Fig.~\ref{fig:timing}).
 
 \begin{figure}[t]
 \centering
-\includegraphics[width=\columnwidth]{fig_timing.png}
+\includegraphics[width=\columnwidth]{fig_timing.pdf}
 \caption{Timing: the 1\,GHz assumption is \approxs$7\x$ optimistic; one pipeline
 stage recovers $2.2\x$.}
 \label{fig:timing}
@@ -395,7 +395,7 @@ Agreement                       & within \approxs$1\x$    & STA predicts P\&R to
 
 \begin{figure}[t]
 \centering
-\includegraphics[width=\columnwidth]{fig_rtl_vs_pred.png}
+\includegraphics[width=\columnwidth]{fig_rtl_vs_pred.pdf}
 \caption{Predicted (Accelergy 45\,nm) vs.\ measured (Sky130 130\,nm) MAC-array
 area; same order of magnitude after node and P\&R correction.}
 \label{fig:pvm}
