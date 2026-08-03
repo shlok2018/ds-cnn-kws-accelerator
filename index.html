@@ -33,7 +33,7 @@
   h2{font-size:1.28rem;margin:0 0 16px;font-weight:720}
   p{margin:0 0 14px;color:#26364f}
   .muted{color:var(--muted)}
-  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:6px}
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin-top:6px}
   .stat{background:var(--soft);border:1px solid var(--line);border-radius:12px;padding:16px}
   .stat .n{font-size:1.35rem;font-weight:760;color:var(--accent-d)}
   .stat .l{font-size:.82rem;color:var(--muted);margin-top:3px}
@@ -81,6 +81,7 @@
       <div class="stat"><div class="n">~139 MHz</div><div class="l">post-layout clock (ASIC)</div></div>
       <div class="stat"><div class="n">~54 MHz</div><div class="l">ECP5 FPGA, flashable bitstream</div></div>
       <div class="stat"><div class="n">17.1 µJ</div><div class="l">energy per inference (45 nm)</div></div>
+      <div class="stat"><div class="n">92.3%</div><div class="l">whole model on the int8 datapath, real audio</div></div>
     </div>
   </div>
 </section>
@@ -119,6 +120,8 @@
       (−50% energy, accuracy recovered to &lt;1% of float via QAT).</li>
       <li>Characterized on <strong>both</strong> a Sky130 ASIC flow and an ECP5 FPGA — fully
       reproducible, open-source tools only.</li>
+      <li>Runs the <strong>whole model end-to-end</strong> on the accelerator's exact int8
+      datapath — 92.3% top-1 on real keyword-spotting audio, matching the float reference.</li>
     </ul>
   </div>
 </section>

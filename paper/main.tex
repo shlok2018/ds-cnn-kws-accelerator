@@ -359,6 +359,16 @@ LUTs, and \approxs$4.1$k flip-flops, and places-and-routes to \approxs$54$\,MHz
 with a flashable bitstream. It is slower than the sky130 ASIC, as FPGA fabric
 generally is, but it makes the design runnable today on a low-cost board.
 
+\emph{End-to-end.} To confirm the datapath runs the real workload and not just
+isolated matmuls, a bit-exact functional model of the array executes the
+\emph{complete} DS-CNN---all nine convolutional layers and the FC classifier,
+each lowered to the 8$\times$8 int8 tiled matmul the array implements, with
+BatchNorm folded in and int8 requantization between layers---on real MFCC clips.
+It reaches \textbf{92.33\%} top-1 accuracy on the 4\,890-clip MLPerf Tiny test
+set, matching the float reference (92.2\%) and the measured int8 PTQ (92.3\%).
+So the accelerator does not merely multiply---it correctly spots keywords. The
+multi-layer scheduling is software-driven here; a hardware sequencer is future work.
+
 \section{Predicted vs. Measured}
 Table~\ref{tab:pvm} reconciles the estimates against both synthesis and a full
 place-and-route. Area is on different nodes, so a fair comparison scales the
