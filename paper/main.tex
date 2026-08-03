@@ -31,6 +31,7 @@ sharma.shlok@northeastern.edu}}
 \maketitle
 
 \begin{abstract}
+\normalfont
 Always-on keyword spotting (KWS) runs on billions of battery-powered edge
 devices, which makes per-inference energy a first-order design constraint.
 Architects routinely prune an accelerator design space with fast analytical
@@ -149,6 +150,7 @@ pre-committed predictions on an open, reproducible flow.
 \label{tab:related}
 \centering\footnotesize
 \setlength{\tabcolsep}{3pt}
+\resizebox{\columnwidth}{!}{%
 \begin{tabular}{lccccc}
 \toprule
  & Custom & Analytical & Open-PDK & Pred.\ vs & Open/ \\
@@ -161,7 +163,7 @@ Eyeriss~\cite{eyeriss}           & \checkmark & partial & (silicon) & --  & -- \
 Timeloop/Accelergy~\cite{timeloop,accelergy} & -- & \checkmark & -- & -- & \checkmark \\
 \textbf{This work}               & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark \\
 \bottomrule
-\end{tabular}
+\end{tabular}}
 \end{table}
 
 \section{Workload}
@@ -376,6 +378,7 @@ synthesis and full place-and-route. The 1\,GHz assumption is \approxs$7\x$
 optimistic; pipelining the MAC recovers Fmax to $319$\,MHz (Fig.~\ref{fig:timing}).}
 \label{tab:pvm}
 \centering\footnotesize
+\resizebox{\columnwidth}{!}{%
 \begin{tabular}{lcc}
 \toprule
  & Area & Clock \\
@@ -387,7 +390,7 @@ OpenLane P\&R (130\,nm)         & 0.63\,mm$^2$, DRC-clean & 139\,MHz (post-layou
 \midrule
 Agreement                       & within \approxs$1\x$    & STA predicts P\&R to \approxs$6\%$ \\
 \bottomrule
-\end{tabular}
+\end{tabular}}
 \end{table}
 
 \begin{figure}[t]
