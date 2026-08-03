@@ -1,0 +1,9 @@
+{
+  "DESIGN_NAME": "mac_array_8x8",
+  "VERILOG_FILES": ["dir::../mac_int8.sv", "dir::../mac_array_8x8.sv"],
+  "CLOCK_PORT": "clk",
+  "CLOCK_PERIOD": 7.0,
+  "FP_CORE_UTIL": 40,
+  "PL_TARGET_DENSITY": 0.55,
+  "PDK": "sky130A"
+}
