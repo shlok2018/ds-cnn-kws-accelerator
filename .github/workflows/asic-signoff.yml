@@ -41,9 +41,16 @@ jobs:
         # get_top_level_cell) that crashes the flow before LVS. The antenna-diode
         # INSERTION earlier in the flow is unaffected, so this is still real
         # sign-off (Magic streamout + DRC + Netgen LVS).
+        #
+        # `openlane --dockerized` launches the tool container with `docker run -t`,
+        # which needs a TTY; GitHub-hosted runners have none, so the raw command
+        # dies with "the input device is not a TTY". `script` allocates a
+        # pseudo-TTY that satisfies it (the standard CI workaround); -e/-q return
+        # the child's exit code so a tool failure still fails the step.
         run: |
-          openlane --dockerized --docker-no-tty \
-            --skip Odb.CheckDesignAntennaProperties ./config.json
+          script -q -e -c \
+            "openlane --dockerized --skip Odb.CheckDesignAntennaProperties ./config.json" \
+            /dev/null
 
       - name: Summarize sign-off (LVS / DRC / STA / power)
         if: always()
