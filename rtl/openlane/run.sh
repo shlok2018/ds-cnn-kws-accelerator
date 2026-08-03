@@ -36,7 +36,12 @@ fi
 echo "   $(/tmp/olvenv/bin/openlane --version | head -1)"
 
 echo "== 3. running the flow (first run pulls the tool image + sky130 PDK; be patient) =="
-/tmp/olvenv/bin/openlane --dockerized --docker-no-tty ./config.json
+# --skip the antenna-property CHECK: it's a buggy lint in OpenLane 2.3.10
+# (StopIteration in get_top_level_cell) that crashes the flow before LVS. Skipping
+# it lets the flow reach Magic streamout + DRC + Netgen LVS (real sign-off). The
+# antenna-diode INSERTION earlier in the flow is unaffected.
+/tmp/olvenv/bin/openlane --dockerized --docker-no-tty \
+    --skip Odb.CheckDesignAntennaProperties ./config.json
 
 echo "== 4. results =="
 RUN=$(ls -dt runs/*/ 2>/dev/null | head -1)
