@@ -12,7 +12,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 echo "== 0. staging RTL into the design dir (OpenLane only reads files here) =="
-cp -f ../mac_int8.sv ../mac_array_8x8.sv ./
+cp -f ../mac_int8.sv ../mac_array_8x8.sv ../mac_array_8x8_pnr.sv ./
 
 echo "== 1. checking Docker =="
 if ! docker version >/dev/null 2>&1; then
