@@ -12,3 +12,5 @@ echo "== full accelerator (load / start / done / read) =="
 iverilog -g2012 -o /tmp/tb_accel.vvp mac_int8.sv mac_array_8x8.sv accel_top.sv tb_accel.sv; vvp /tmp/tb_accel.vvp
 echo "== tiling GEMM engine (arbitrary MxK * KxP in HW, all DS-CNN layer shapes) =="
 iverilog -g2012 -o /tmp/tb_gemm.vvp mac_int8.sv mac_array_8x8.sv gemm_top.sv tb_gemm.sv; vvp /tmp/tb_gemm.vvp
+echo "== requant/activation lane (int32 -> int8 fixed-point requant + ReLU) =="
+iverilog -g2012 -o /tmp/tb_requant.vvp requant_unit.sv tb_requant.sv; vvp /tmp/tb_requant.vvp

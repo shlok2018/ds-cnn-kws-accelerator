@@ -91,6 +91,24 @@ def fc(x_vec, w):
     return matmul(np.asarray(x_vec, np.int64).reshape(1, -1), w).reshape(-1)
 
 
+# ---- integer requant / activation (bit-exact vs rtl/requant_unit.sv) ----------
+def requant(acc, mult, shift, bias=0, relu=True, qmax=127):
+    """Requantize an int32 accumulator to int8 exactly as rtl/requant_unit.sv does:
+        r = floor(((acc + bias) * mult + 2**(shift-1)) / 2**shift)   # round-half-up
+        y = clip(max(r, 0) if relu else r, -qmax, qmax)
+    mult/shift/bias broadcast over acc's last axis (one set per output channel)."""
+    acc   = np.asarray(acc,   np.int64)
+    mult  = np.asarray(mult,  np.int64)
+    shift = np.asarray(shift, np.int64)
+    bias  = np.asarray(bias,  np.int64)
+    x    = acc + bias
+    half = np.where(shift > 0, np.left_shift(np.int64(1), np.maximum(shift - 1, 0)), np.int64(0))
+    r    = np.right_shift(x * mult + half, shift)      # arithmetic shift on signed int64
+    if relu:
+        r = np.maximum(r, 0)
+    return np.clip(r, -qmax, qmax).astype(np.int8)
+
+
 # ---- self-test: every layer type must match a NumPy reference exactly --------
 def _selftest():
     rng = np.random.default_rng(0)
