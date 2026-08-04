@@ -46,10 +46,18 @@ kit, comparing the two. The area estimate agrees to within \approxs$1\x$ once
 technology-node and place-and-route corrections are applied, whereas the
 implicit 1\,GHz clock assumption is \approxs$7\x$ optimistic for an unpipelined
 single-cycle multiply--accumulate (MAC) unit---an error we then recover $2.2\x$
-by pipelining. A full OpenLane place-and-route on sky130 closes the loop: the
-design routes DRC-clean and its \approxs$139$\,MHz post-layout clock lands within
-\approxs$6\%$ of the gate-level estimate, so the cheap pre-layout numbers proved
-faithful to silicon even where the assumed clock did not. Along the way we correct a common depthwise-modeling pitfall that
+by pipelining. A full OpenLane RTL-to-GDS sign-off on sky130 closes the loop: the
+design is LVS- and DRC-clean, and the $147$\,MHz gate-level estimate tracks
+post-placement \emph{typical} timing to \approxs$6\%$---but multi-corner
+\emph{post-route} static timing exposes a further gap, the committed $143$\,MHz
+failing at the slow corner ($-6.2$\,ns worst setup) for a true across-corner
+sign-off of \approxs$75$\,MHz. Pipelining the MAC and the accumulator read-out
+then takes the design from failing to a \emph{completed} $143$\,MHz sign-off
+(meeting typical corners; \approxs$103$\,MHz across all corners) at lower area
+($0.63{\to}0.47$\,mm$^2$) and \approxs$60\%$ lower power. The cheap pre-layout
+numbers thus rank designs and predict area faithfully, while each step toward
+real sign-off---multi-corner, then post-route---reveals more of the clock
+optimism. Along the way we correct a common depthwise-modeling pitfall that
 over-counts MACs by \approxs$64\x$ and inflates the ``depthwise starves the
 array'' narrative, and we quantify two energy levers: depthwise/pointwise
 fusion ($-23\%$) and int8$\rightarrow$int4 precision ($-50\%$ energy for under a $1$-point
@@ -340,17 +348,35 @@ stage recovers $2.2\x$.}
 \label{fig:timing}
 \end{figure}
 
-\emph{Post-layout.} To test the pre-layout estimates against a real physical
-implementation rather than stopping at synthesis, the array---wrapped in a
-registered read-out mux so results leave through a narrow port instead of 2\,048
-pins---was taken through the open-source OpenLane RTL-to-GDS flow on sky130. It
-routes \emph{DRC-clean} (0 violations) with a post-route standard-cell area of
-$0.63$\,mm$^2$ and an estimated \approxs$263$\,mW peak dynamic power at full
-activity. Most usefully, the post-placement setup timing closes at
-\approxs$139$\,MHz---within \approxs$6\%$ of the $147$\,MHz gate-level STA
-estimate, i.e.\ wire delays added only \approxs$0.4$\,ns to the critical path.
-The cheap pre-layout timing estimate was therefore itself a faithful predictor
-of the routed design, even though the original 1\,GHz assumption was not.
+\emph{Post-layout sign-off.} To test the pre-layout estimates against a real
+physical implementation rather than stopping at synthesis, the array---wrapped in
+a registered read-out mux so results leave through a narrow port instead of
+2\,048 pins---was taken through the full open-source OpenLane RTL-to-GDS flow on
+sky130. It routes \emph{DRC-clean} (0 violations, by both Magic and KLayout) and
+\emph{LVS-clean} (Netgen: circuits match uniquely), with a post-route
+standard-cell area of $0.63$\,mm$^2$ and \approxs$273$\,mW dynamic power at the
+typical corner and full activity---the area and power both matching the pre-RTL
+predictions. Post-placement typical timing closes at \approxs$139$\,MHz, within
+\approxs$6\%$ of the $147$\,MHz gate-level STA, so the cheap estimate faithfully
+predicts the \emph{typical} routed clock. Full multi-corner \emph{post-route}
+sign-off, however, is sharper: the committed $143$\,MHz \emph{fails} at the slow
+(SS) corner with a worst setup slack of $-6.2$\,ns, and the true across-corner
+closing frequency is \approxs$75$\,MHz---roughly half the typical estimate. The
+register-to-register critical path is not the MAC arithmetic but the single-cycle
+$64{:}1{\times}32$-bit accumulator read-out mux.
+
+\emph{Recovering the clock.} Pipelining both the PE (a register between the
+multiplier and the accumulate-add) and the read-out mux (the $64{:}1$ select
+split into two registered $8{:}1$ stages) targets exactly that path. Through the
+same sign-off flow at the $143$\,MHz target, the pipelined top \emph{completes}
+where the original flow aborts on timing, meeting timing at the typical and fast
+corners; its worst-corner setup slack improves to $-2.7$\,ns, lifting the
+all-corner sign-off frequency to \approxs$103$\,MHz while \emph{reducing} cell
+area from $0.63$ to $0.47$\,mm$^2$ and dynamic power by \approxs$60\%$ (the
+original having spent \approxs$6.7$k buffers losing a setup battle). The new
+worst-corner path, verified from the sign-off STA, is the $32$-bit accumulator
+adder---which product-pipelining does not shorten---the next lever for higher
+frequency.
 
 \emph{FPGA.} The same RTL is not ASIC-only. The full accelerator (control FSM,
 operand/result buffers, and the array) also maps to a Lattice ECP5-45 through the
@@ -370,22 +396,28 @@ So the accelerator does not merely multiply---it correctly spots keywords. The
 multi-layer scheduling is software-driven here; a hardware sequencer is future work.
 
 \section{Predicted vs. Measured}
-Table~\ref{tab:pvm} reconciles the estimates against both synthesis and a full
-place-and-route. Area is on different nodes, so a fair comparison scales the
-45\,nm estimate to 130\,nm (ideal area scaling, \approxs$8.35\x$); the
-synthesized bare-array cell area then lands within \approxs$1\x$ of the scaled
-prediction (Fig.~\ref{fig:pvm}), and the routed design (0.63\,mm$^2$, which also
-includes the read-out mux and clock-tree/buffer/fill overhead) is consistent with
-it. Timing is the more telling axis: the 1\,GHz assumption was \approxs$7\x$
-optimistic, but the $147$\,MHz gate-level STA predicted the \approxs$139$\,MHz
-post-layout closure to within \approxs$6\%$. In other words, the cheap pre-layout
-estimates were reliable for both area and clock; only the originally
-\emph{assumed} clock was not.
+Table~\ref{tab:pvm} reconciles the estimates against synthesis, place-and-route,
+and full multi-corner post-route sign-off. Area is on different nodes, so a fair
+comparison scales the 45\,nm estimate to 130\,nm (ideal area scaling,
+\approxs$8.35\x$); the synthesized bare-array cell area then lands within
+\approxs$1\x$ of the scaled prediction (Fig.~\ref{fig:pvm}), and the routed design
+(0.63\,mm$^2$, which also includes the read-out mux and clock-tree/buffer/fill
+overhead) is consistent with it. Timing is the more telling axis, and it degrades
+at each step of rigor: the assumed $1$\,GHz was \approxs$7\x$ optimistic; the
+$147$\,MHz gate-level STA then predicted the \approxs$139$\,MHz post-placement
+\emph{typical} clock to within \approxs$6\%$; but full multi-corner
+\emph{post-route} sign-off shows the committed $143$\,MHz failing at the slow
+corner ($-6.2$\,ns setup), for a true across-corner Fmax of \approxs$75$\,MHz---
+about half the typical figure. So the cheap pre-layout estimates rank designs and
+predict area reliably, and predict the \emph{typical} clock well, but the
+worst-corner sign-off clock---the one a product must actually meet---is lower
+still, and only the full flow reveals it.
 
 \begin{table}[t]
-\caption{Predicted (Accelergy, 45\,nm) vs.\ measured (Sky130, 130\,nm), through
-synthesis and full place-and-route. The 1\,GHz assumption is \approxs$7\x$
-optimistic; pipelining the MAC recovers Fmax to $319$\,MHz (Fig.~\ref{fig:timing}).}
+\caption{Predicted (Accelergy, 45\,nm) vs.\ measured (Sky130, 130\,nm), from
+synthesis through full multi-corner post-route sign-off. Area agrees to
+\approxs$1\x$; the clock degrades at each step of rigor, and pipelining the MAC
+and read-out recovers the all-corner sign-off to \approxs$103$\,MHz.}
 \label{tab:pvm}
 \centering\footnotesize
 \resizebox{\columnwidth}{!}{%
@@ -396,9 +428,11 @@ optimistic; pipelining the MAC recovers Fmax to $319$\,MHz (Fig.~\ref{fig:timing
 Predicted (Accelergy, 45\,nm)   & 71k\,\um$^2$            & 1\,GHz (assumed) \\
 \quad scaled to 130\,nm         & \approxs593k\,\um$^2$   & --- \\
 Yosys synthesis (130\,nm)       & 369k\,\um$^2$           & 147\,MHz (STA) \\
-OpenLane P\&R (130\,nm)         & 0.63\,mm$^2$, DRC-clean & 139\,MHz (post-layout) \\
+OpenLane P\&R, post-place       & 0.63\,mm$^2$            & 139\,MHz (typical) \\
+\quad post-route sign-off       & LVS/DRC-clean           & \approxs75\,MHz (all-corner) \\
+\quad + pipelined read-out      & 0.47\,mm$^2$            & \approxs103\,MHz (all-corner) \\
 \midrule
-Agreement                       & within \approxs$1\x$    & STA predicts P\&R to \approxs$6\%$ \\
+Agreement                       & within \approxs$1\x$    & typ.\ to \approxs$6\%$; sign-off \approxs$2\x$ lower \\
 \bottomrule
 \end{tabular}}
 \end{table}
@@ -414,9 +448,11 @@ area; same order of magnitude after node and P\&R correction.}
 The practical reading is specific: an analytical model of this class can be
 trusted for \emph{relative} ranking outright, and for \emph{absolute} area to
 within a small factor once technology node and physical-design overheads are
-applied; but its implicit \emph{timing} assumption must be validated or
-de-rated, because the achievable clock is set by the microarchitecture (here, an
-unpipelined MAC), not by the estimator.
+applied; but its implicit \emph{timing} assumption must be validated against a
+full multi-corner, post-route sign-off and de-rated accordingly, because the
+achievable clock is set by the microarchitecture (here, the accumulator read-out
+mux, then---once pipelined---the accumulator adder) and by slow-corner derating,
+not by the estimator.
 
 \section{Practical Relevance}
 Two aspects of this study transfer beyond the specific 8$\times$8 core. First,
@@ -495,29 +531,34 @@ Scope / team & One block, one engineer          & Full SoC, large team, \$10M$+$
 The compute core, control FSM, and operand/result buffers are all implemented in
 RTL and verified (and the accelerator also maps to an ECP5 FPGA at \approxs$54$\,MHz
 with a bitstream); the buffers are behavioral registers, not dense SRAM macros.
-The place-and-route is complete and DRC-clean, but the reported
-$139$\,MHz is post-placement STA with estimated parasitics---the final sign-off
-STA and layout-vs-schematic (LVS) steps did not run (a late-flow checker crash,
-and detailed routing is run-to-run non-deterministic), so it is a close estimate
-rather than a signoff number---and the \approxs$263$\,mW is peak dynamic
-power at default switching activity, not the low-duty-cycle always-on average
-(the per-inference energy remains the meaningful always-on figure). The
-energy/area tables are 45\,nm while the implementation is 130\,nm, which is why
-the study relies on relative ranking and scales explicitly in the comparison. The
-int4 accuracy is measured with weights-only quantization and a short, CPU-bounded
-fine-tune; activation quantization and a fuller precision sweep are future work.
-Finally, a single workload and dataflow family are
-studied. Future work is signoff-grade STA, power, and LVS, an
-accuracy--energy Pareto for reduced precision, dense SRAM-macro buffers and
-on-board FPGA bring-up, deeper pipelining toward higher frequency, and additional
+The place-and-route now completes full sign-off---DRC-clean (Magic and KLayout),
+LVS-clean (Netgen), and multi-corner post-route STA and power---but two caveats
+remain. OpenLane's design-level antenna \emph{check} is skipped (a late-flow
+checker crash); antenna-diode insertion still runs and the router reports fewer
+than $200$ residual antenna nets, so antenna sign-off specifically is incomplete.
+And the reported power is at full switching activity, not the low-duty-cycle
+always-on average (per-inference energy remains the meaningful always-on figure).
+The energy/area tables are 45\,nm while the implementation is 130\,nm, which is
+why the study relies on relative ranking and scales explicitly in the comparison.
+The int4 accuracy is measured with weights-only quantization and a short,
+CPU-bounded fine-tune; activation quantization and a fuller precision sweep are
+future work. Finally, a single workload and dataflow family are studied. Future
+work is a narrower or faster accumulator to move past the \approxs$103$\,MHz,
+adder-limited pipelined clock, dense SRAM-macro buffers and on-board FPGA
+bring-up, an accuracy--energy Pareto for reduced precision, and additional
 dataflows.
 
 \section{Conclusion}
 We carried a DS-CNN keyword-spotting accelerator from an analytical design-space
 exploration, through committed pre-RTL predictions, to a synthesized and
-statically-timed compute core on an open 130\,nm PDK, and reported both sides of
-the outcome. The area estimate held to within \approxs$1\x$; the clock assumption
-was \approxs$7\x$ optimistic and was recovered $2.2\x$ by pipelining. In the
+signed-off compute core (LVS- and DRC-clean, multi-corner post-route STA and
+power) on an open 130\,nm PDK, and reported both sides of the outcome. The area
+estimate held to within \approxs$1\x$; the clock, though, degraded at each step
+of rigor---\approxs$7\x$ optimistic as an assumed $1$\,GHz, \approxs$139$\,MHz at
+post-placement typical, and \approxs$75$\,MHz once multi-corner post-route
+sign-off is applied---after which pipelining the compute and the accumulator
+read-out recovered the all-corner clock to \approxs$103$\,MHz (a completed
+$143$\,MHz sign-off at the typical corner) at lower area and power. In the
 process we corrected a depthwise-modeling pitfall that over-counts MACs
 \approxs$64\x$ and showed the ``depthwise idles the array'' claim to be
 dataflow-dependent, and we quantified fusion ($-23\%$ energy) and precision
