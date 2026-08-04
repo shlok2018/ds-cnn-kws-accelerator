@@ -1,0 +1,9 @@
+{
+  "DESIGN_NAME": "mac_array_8x8_pipe_pnr",
+  "VERILOG_FILES": ["dir::mac_int8_pipe.sv", "dir::mac_array_8x8_pipe.sv", "dir::mac_array_8x8_pipe_pnr.sv"],
+  "CLOCK_PORT": "clk",
+  "CLOCK_PERIOD": 7.0,
+  "FP_CORE_UTIL": 25,
+  "PL_TARGET_DENSITY": 0.35,
+  "PDK": "sky130A"
+}

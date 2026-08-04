@@ -9,8 +9,12 @@ name: ASIC sign-off (OpenLane RTL-to-GDS + LVS)
 on:
   workflow_dispatch:
     inputs:
+      config:
+        description: "OpenLane config to harden (config.json = unpipelined top; config_pipe.json = pipelined top)."
+        required: false
+        default: "config.json"
       clock_period_ns:
-        description: "Target clock period in ns (config commits 7.0 = 143 MHz; relax to close the slow corner)."
+        description: "Target clock period in ns (7.0 = 143 MHz; relax to close the slow corner)."
         required: false
         default: "7.0"
 
@@ -38,18 +42,23 @@ jobs:
 
       - name: Stage RTL into the design dir
         working-directory: rtl/openlane
-        run: cp -f ../mac_int8.sv ../mac_array_8x8.sv ../mac_array_8x8_pnr.sv ./
+        # Copy every synthesizable source (config picks which top is hardened).
+        run: cp -f ../mac_int8.sv ../mac_array_8x8.sv ../mac_array_8x8_pnr.sv
+               ../mac_int8_pipe.sv ../mac_array_8x8_pipe.sv ../mac_array_8x8_pipe_pnr.sv ./
 
       - name: Set target clock period (run-time override, committed config untouched)
         working-directory: rtl/openlane
         env:
           CLK_NS: ${{ github.event.inputs.clock_period_ns }}
+          CONFIG: ${{ github.event.inputs.config }}
         run: |
-          python -c "import json,os; p='config.json'; c=json.load(open(p)); clk=float(os.environ.get('CLK_NS') or c['CLOCK_PERIOD']); c['CLOCK_PERIOD']=clk; json.dump(c,open(p,'w'),indent=2); print('CLOCK_PERIOD set to %.3f ns (%.1f MHz)'%(clk,1000.0/clk))"
-          cat config.json
+          python -c "import json,os; p=os.environ.get('CONFIG') or 'config.json'; c=json.load(open(p)); clk=float(os.environ.get('CLK_NS') or c['CLOCK_PERIOD']); c['CLOCK_PERIOD']=clk; json.dump(c,open(p,'w'),indent=2); print('%s: CLOCK_PERIOD %.3f ns (%.1f MHz), top %s'%(p,clk,1000.0/clk,c['DESIGN_NAME']))"
+          cat "${CONFIG:-config.json}"
 
       - name: Run OpenLane RTL-to-GDS + DRC + Netgen LVS
         working-directory: rtl/openlane
+        env:
+          CONFIG: ${{ github.event.inputs.config }}
         # --skip the antenna-property CHECK: buggy lint (StopIteration in
         # get_top_level_cell) that crashes the flow before LVS. The antenna-diode
         # INSERTION earlier in the flow is unaffected, so this is still real
@@ -62,7 +71,7 @@ jobs:
         # the child's exit code so a tool failure still fails the step.
         run: |
           script -q -e -c \
-            "openlane --dockerized --skip Odb.CheckDesignAntennaProperties ./config.json" \
+            "openlane --dockerized --skip Odb.CheckDesignAntennaProperties ./${CONFIG:-config.json}" \
             /dev/null
 
       - name: Summarize sign-off (LVS / DRC / STA / power)
