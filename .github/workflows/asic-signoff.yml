@@ -8,6 +8,11 @@ name: ASIC sign-off (OpenLane RTL-to-GDS + LVS)
 # while, so we don't want it firing on every push.
 on:
   workflow_dispatch:
+    inputs:
+      clock_period_ns:
+        description: "Target clock period in ns (config commits 7.0 = 143 MHz; relax to close the slow corner)."
+        required: false
+        default: "7.0"
 
 permissions:
   contents: read
@@ -34,6 +39,14 @@ jobs:
       - name: Stage RTL into the design dir
         working-directory: rtl/openlane
         run: cp -f ../mac_int8.sv ../mac_array_8x8.sv ../mac_array_8x8_pnr.sv ./
+
+      - name: Set target clock period (run-time override, committed config untouched)
+        working-directory: rtl/openlane
+        env:
+          CLK_NS: ${{ github.event.inputs.clock_period_ns }}
+        run: |
+          python -c "import json,os; p='config.json'; c=json.load(open(p)); clk=float(os.environ.get('CLK_NS') or c['CLOCK_PERIOD']); c['CLOCK_PERIOD']=clk; json.dump(c,open(p,'w'),indent=2); print('CLOCK_PERIOD set to %.3f ns (%.1f MHz)'%(clk,1000.0/clk))"
+          cat config.json
 
       - name: Run OpenLane RTL-to-GDS + DRC + Netgen LVS
         working-directory: rtl/openlane
@@ -84,14 +97,13 @@ jobs:
 
           echo "### Final metrics (area / timing / power)" >> "$GITHUB_STEP_SUMMARY"
           echo '```json' >> "$GITHUB_STEP_SUMMARY"
+          # Prefer the final metrics.json; otherwise fall back to the post-route STA
+          # step's state_out.json (OpenLane 2 keeps cumulative metrics there).
           METRICS=$(find "$RUN" -path '*final*metrics.json' 2>/dev/null | head -1)
-          [ -z "$METRICS" ] && METRICS=$(find "$RUN" -iname 'metrics.json' 2>/dev/null | tail -1)
+          [ -z "$METRICS" ] && METRICS=$(ls -1 "$RUN"*stapostpnr*/state_out.json 2>/dev/null | tail -1)
+          [ -z "$METRICS" ] && METRICS=$(ls -1 "$RUN"*/state_out.json 2>/dev/null | tail -1)
           echo "metrics file: $METRICS"
-          if [ -n "$METRICS" ]; then
-            python -c "import json,sys; d=json.load(open('$METRICS')); \
-              keys=[k for k in d if any(t in k.lower() for t in ['area','power','timing','slack','clock','util','wns','tns','freq'])]; \
-              print(json.dumps({k:d[k] for k in keys}, indent=2))"
-          fi
+          [ -n "$METRICS" ] && python -c "import json,sys; d=json.load(open(sys.argv[1])); d=d.get('metrics',d); w=['die__area','core__area','instance__area__stdcell','instance__utilization','power__total','timing__setup__ws','timing__hold__ws','route__drc_errors','route__antenna_violation__count']; out={k:d[k] for k in sorted(d) if (any(x in k for x in w) and 'corner' not in k) or 'timing__setup__ws__corner:' in k or 'timing__hold__ws__corner:' in k}; print(json.dumps(out,indent=2))" "$METRICS" | tee -a "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
           cat "$GITHUB_STEP_SUMMARY"
 
