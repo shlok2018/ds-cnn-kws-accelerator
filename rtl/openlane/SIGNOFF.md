@@ -74,12 +74,43 @@ written); setup/hold violations downgraded to warnings:
 The 273 mW typical figure at 143 MHz matches the ~263 mW pre-RTL prediction;
 dynamic power scales roughly with frequency at the relaxed clock.
 
+## Step 3 — deeper-pipelined variant (`mac_array_8x8_pipe_pnr`)
+
+Same flow, same 7.0 ns / 143 MHz target, but the top is the pipelined array
+(registered product) with a **2-stage read-out mux** (64:1 → two registered 8:1).
+This directly attacks the Step-2 bottleneck. Head-to-head, both at 7 ns post-route:
+
+| Metric (7 ns / 143 MHz) | Original `_pnr` | Pipelined `_pipe_pnr` |
+|---|---|---|
+| OpenLane flow | **FAILED** (fatal setup errors) | **COMPLETES** (warnings only, GDS written) |
+| LVS / DRC | match / 0 | match / 0 |
+| Setup WS, nom_tt (typical) | −0.35 ns | **+1.77 ns (meets 143 MHz)** |
+| Setup WS, max_ss (worst) | **−6.20 ns** | **−2.67 ns** |
+| All-corner close | ~13.2 ns → **~76 MHz** | ~9.7 ns → **~103 MHz** |
+| Hold WS, max_ss | −0.99 ns | −0.72 ns |
+| Std-cell area | 0.630 mm² | **0.469 mm²** (−26 %) |
+| Power (metric) | 0.320 W | **0.122 W** (−62 %) |
+
+- Pipelining cut the worst-corner setup shortfall by **57 %** (−6.20 → −2.67 ns) and
+  flipped the flow from a fatal timing failure to a completed sign-off that **meets
+  143 MHz at the typical and fast corners**. All-corner Fmax ~76 → ~103 MHz.
+- Area and power both *drop* — mostly because the original burned ~6.7k timing-repair
+  buffers fighting an unwinnable setup battle at 7 ns; the pipelined paths need far
+  less repair (and the shallower read-out cuts switching/glitch power).
+- Residual worst-corner slack (−2.67 ns at ss) is now consistent with the `acc →
+  32-bit add → acc` accumulator path, which product-pipelining does not shorten —
+  the next lever (narrower accumulator or a faster adder) if >103 MHz all-corner
+  is wanted.
+
 ## Bottom line
 - **Step 2(a) LVS: DONE** — circuits match uniquely.
 - **Step 2(b) signoff STA + power: DONE** — full 9-corner post-route STA + power.
+- **Step 3 (deeper pipelining): DONE** — pipelined MAC + 2-stage read-out mux takes
+  the design from *failing* 143 MHz to *completing* sign-off there (meets typical/fast
+  corners), all-corner ~76 → ~103 MHz, at −26 % area and −62 % power.
 - Honest gap: the ~139 MHz handoff estimate was post-*placement* / typical; the
-  real post-*route*, multi-corner sign-off is ~62 MHz (worst) / ~105 MHz (typical),
-  gated by the accumulator read-out mux.
+  real post-*route*, multi-corner sign-off is ~62–105 MHz (original) rising to
+  ~103 MHz all-corner (pipelined), gated first by the read-out mux, then the adder.
 
-Runs: 7 ns = GH Actions run 30863096950; 15 ns = 30867700298. Full run dirs
-(GDS + reports) are uploaded as the `openlane-signoff-run` artifact on each.
+Runs (GH Actions): original 7 ns = 30863096950, 15 ns = 30867700298; pipelined
+7 ns = 30875557743. Full run dirs (GDS + reports) upload as `openlane-signoff-run`.
