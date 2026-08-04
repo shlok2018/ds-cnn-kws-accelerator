@@ -438,6 +438,59 @@ credible pre-silicon exploration without proprietary tools. We stress that the
 compute core here is illustrative rather than a product; the transferable
 outputs are the methodology and the fidelity data, not the specific array.
 
+\section{A Microcosm of Commercial NPU Design}
+Always-on keyword spotting is not a toy workload: it is a shipping on-device
+function, and the depthwise-separable network that implements it is representative
+of the models mapped to commercial mobile neural accelerators such as the Apple
+Neural Engine, Qualcomm Hexagon, and Google Edge TPU. The $8\times8$ int8
+weight-stationary core studied here is thus a research-scale instance of a real
+product block, and the flow that produced it mirrors the industrial one.
+Architectural design-space exploration---Timeloop and Accelergy here
+\cite{timeloop,accelergy}, proprietary power/performance/area models inside a
+company---steers a microarchitecture that is then captured in RTL, synthesized,
+placed and routed, checked for DRC and LVS, statically timed across process
+corners, and prototyped on an FPGA, while the network is co-designed with the
+hardware through quantization. That closed loop---estimate, commit, implement,
+measure, reconcile---is the same one a commercial NPU program runs
+\cite{tpu,eyeriss,simba}.
+
+The differences are of \emph{scale and sign-off depth, not of methodology}
+(Table~\ref{tab:industrial}). A commercial part is fabricated on a leading-edge
+FinFET/GAA node with EUV rather than an open 130\,nm planar PDK; it is built with
+commercial EDA (Synopsys, Cadence, Siemens Calibre) from a mix of standard cells,
+full-custom blocks, and compiled SRAM rather than open-source standard-cell
+auto-place-and-route; it clears a broader sign-off---power integrity (IR-drop,
+electromigration), thermal, ESD/latch-up, and aging on top of the DRC, LVS, and
+static timing an open RTL-to-GDS flow performs---and is verified by
+constrained-random (UVM), formal, and hardware-emulation campaigns rather than
+directed testbenches. It is also a full system-on-chip built by a large team at a
+multi-million-dollar mask cost, of which a wake-word accelerator is one small
+block. None of these alter the \emph{shape} of the design flow; they raise its
+node, cost, and rigor. The value of an open study like this one is that it
+reproduces that shape end-to-end on free tools, so the methodology---and the
+fidelity data attached to it---can be inspected and re-run without a proprietary
+back end.
+
+\begin{table}[t]
+\caption{This open study vs.\ a commercial mobile-NPU program. The design loop is
+shared; node, tooling, verification, sign-off breadth, and scale differ.}
+\label{tab:industrial}
+\centering\footnotesize
+\resizebox{\columnwidth}{!}{%
+\begin{tabular}{lll}
+\toprule
+ & This work & Commercial mobile NPU \\
+\midrule
+Node / fab   & Sky130 130\,nm (open) $+$ FPGA   & 3--5\,nm FinFET/GAA, EUV \\
+EDA tools    & OpenLane, Yosys, OpenROAD (open) & Synopsys, Cadence, Calibre \\
+Design style & Standard-cell auto-P\&R          & $+$ full-custom, compiled SRAM \\
+Verification & Directed self-checking TB        & UVM, formal, emulation, FPGA \\
+Sign-off     & DRC, LVS, multi-corner STA       & $+$ IR/EM, thermal, ESD, aging \\
+Scope / team & One block, one engineer          & Full SoC, large team, \$10M$+$ masks \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
 \section{Limitations and Future Work}
 The compute core, control FSM, and operand/result buffers are all implemented in
 RTL and verified (and the accelerator also maps to an ECP5 FPGA at \approxs$54$\,MHz
