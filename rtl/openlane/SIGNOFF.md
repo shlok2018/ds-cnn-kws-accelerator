@@ -97,10 +97,12 @@ This directly attacks the Step-2 bottleneck. Head-to-head, both at 7 ns post-rou
 - Area and power both *drop* — mostly because the original burned ~6.7k timing-repair
   buffers fighting an unwinnable setup battle at 7 ns; the pipelined paths need far
   less repair (and the shallower read-out cuts switching/glitch power).
-- Residual worst-corner slack (−2.67 ns at ss) is now consistent with the `acc →
-  32-bit add → acc` accumulator path, which product-pipelining does not shorten —
-  the next lever (narrower accumulator or a faster adder) if >103 MHz all-corner
-  is wanted.
+- Residual worst-corner slack (−2.67 ns at ss) is now the `acc → 32-bit add → acc`
+  accumulator path (**verified**: the max_ss worst path starts at an `o_flat`
+  accumulator FF and runs through the adder's carry chain — `xor2` sum gates plus
+  `a31o`/`o21a`/`o31a`/`or3` carry gates — to the `acc` register, 12.66 ns arrival).
+  Product-pipelining does not shorten this; the next lever (narrower accumulator or
+  a faster adder) is needed for >103 MHz all-corner.
 
 ## Bottom line
 - **Step 2(a) LVS: DONE** — circuits match uniquely.
