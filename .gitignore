@@ -13,3 +13,4 @@ kws_eval/data/
 kws_eval/*.npz
 rtl/openlane/runs/
 rtl/openlane/*.sv
+rtl/gen/

@@ -148,6 +148,77 @@ def infer_static(x, q, s0, s_fc, s_last, npos):
     raise RuntimeError("no fc")
 
 
+def same_pad_amt(H, W, R, S, stride):
+    P, Q = -(-H // stride), -(-W // stride)
+    pH = max((P-1)*stride + R - H, 0); pW = max((Q-1)*stride + S - W, 0)
+    return P, Q, pH // 2, pW // 2
+
+
+def emit_rtl(X, y, layers, q, s, s_fc, npos, nclips, outdir):
+    """Write the descriptor/weight/param tables + a few quantized clips for the
+    RTL sequencer (rtl/dscnn_seq) to read via $readmemh, plus expected preds."""
+    os.makedirs(outdir, exist_ok=True)
+    NL = len(layers)
+    h8  = lambda v: format(int(v) & 0xFF, "02x")
+    h32 = lambda v: format(int(v) & 0xFFFFFFFF, "08x")
+    desc = [[0]*17 for _ in range(NL)]
+    wmem, pmult, pshift, pbias = [], [], [], []
+    H, W, C = X[0].shape                                   # 49,10,1 input map
+    for li, (L, ql) in enumerate(zip(layers, q)):
+        woff, poff = len(wmem), len(pmult)
+        if ql[0] == "fc":
+            _, fcwq, fc_mult, fc_bias = ql
+            Cin, NC = fcwq.shape
+            for c in range(Cin):
+                for o in range(NC): wmem.append(int(fcwq[c, o]))
+            pool_M = s[li] / (npos * s_fc)
+            pm, psh = mult_shift(np.array([pool_M]))
+            for o in range(NC):
+                pmult.append(int(fc_mult[o])); pshift.append(0); pbias.append(int(fc_bias[o]))
+            # H,W of the fc "layer" = input spatial (so M=H*W); Cout=NC
+            desc[li] = [H, W, C, 1, 1, 1, NC, 0, 0, 0, 0, 0, woff, poff, 2, int(pm[0]), int(psh)]
+        elif ql[0] == "dw":
+            _, wq, mult, shift, bias_i, stride = ql
+            R, S, Cc = wq.shape
+            P, Q, pt, pl = same_pad_amt(H, W, R, S, stride)
+            for ci in range(Cc):
+                for k in range(R*S): wmem.append(int(wq[k//S, k % S, ci]))
+            for ci in range(Cc):
+                pmult.append(int(mult[ci])); pshift.append(int(shift)); pbias.append(int(bias_i[ci]))
+            desc[li] = [H, W, C, R, S, stride, Cc, P, Q, pt, pl, 1, woff, poff, 1, 0, 0]
+            H, W, C = P, Q, Cc
+        else:                                             # std / pw
+            _, wq, mult, shift, bias_i, stride = ql
+            R, S, Ci, Co = wq.shape
+            P, Q, pt, pl = same_pad_amt(H, W, R, S, stride)
+            flat = wq.reshape(R*S*Ci, Co)
+            for k in range(R*S*Ci):
+                for o in range(Co): wmem.append(int(flat[k, o]))
+            for o in range(Co):
+                pmult.append(int(mult[o])); pshift.append(int(shift)); pbias.append(int(bias_i[o]))
+            desc[li] = [H, W, C, R, S, stride, Co, P, Q, pt, pl, 1, woff, poff, 0, 0, 0]
+            H, W, C = P, Q, Co
+    with open(f"{outdir}/desc.hex", "w") as f:
+        for l in range(NL):
+            for fld in range(17): f.write(h32(desc[l][fld]) + "\n")
+    with open(f"{outdir}/wmem.hex", "w") as f:  f.write("\n".join(h8(v) for v in wmem) + "\n")
+    with open(f"{outdir}/pmult.hex", "w") as f: f.write("\n".join(h32(v) for v in pmult) + "\n")
+    with open(f"{outdir}/pshift.hex", "w") as f: f.write("\n".join(h32(v) for v in pshift) + "\n")
+    with open(f"{outdir}/pbias.hex", "w") as f: f.write("\n".join(h32(v) for v in pbias) + "\n")
+    s_last = s[NL-1]
+    clips, preds = [], []
+    for k in range(nclips):
+        xq = np.clip(np.round(X[k] / s[0]), -127, 127).astype(np.int8).reshape(-1)
+        clips += [int(v) for v in xq]
+        preds.append(infer_static(X[k], q, s[0], s_fc, s_last, npos))
+    with open(f"{outdir}/clips.hex", "w") as f:  f.write("\n".join(h8(v) for v in clips) + "\n")
+    with open(f"{outdir}/preds.hex", "w") as f:  f.write("\n".join(format(p, "x") for p in preds) + "\n")
+    with open(f"{outdir}/meta.txt", "w") as f:
+        f.write(f"{NL} {len(wmem)} {len(pmult)} {nclips} {H*W*C if False else 490}\n")
+    print(f"emitted {NL} layers, {len(wmem)} weights, {len(pmult)} params, {nclips} clips -> {outdir}")
+    print(f"  expected preds: {preds}")
+
+
 def main():
     seq = load_weights()
     layers = build_layers(seq)
@@ -175,6 +246,11 @@ def main():
     print(f"layers: {[L[0] for L in layers]}")
     print(f"calibrated scales (per-layer input): {np.array2string(s, precision=4)}")
     print(f"static-quant accelerator top-1 accuracy on {len(idx)} clips: {acc_top1*100:.2f}%")
+
+    if os.environ.get("EMIT"):
+        n = int(os.environ.get("EMIT", "5"))
+        here = os.path.dirname(os.path.abspath(__file__))
+        emit_rtl(X, y, layers, q, s, s_fc, npos, n, os.path.join(here, "..", "rtl", "gen"))
 
 
 if __name__ == "__main__":
