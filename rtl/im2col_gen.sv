@@ -13,7 +13,11 @@ module im2col_gen #(
 ) (
     input  logic                          clk, rst,
     // ---- convolution geometry (runtime) ----
+    // C = channels EMITTED into cols (Cin for std/pw; 1 for a single depthwise
+    // channel). Cstride/cbase locate the source: src channel = cbase + c, and the
+    // source map has Cstride channels per pixel. For std/pw set Cstride=C,cbase=0.
     input  logic [7:0]                    H, W, C, R, S, stride, P, Q,
+    input  logic [7:0]                    Cstride, cbase,
     input  logic signed [7:0]             pad_top, pad_left,
     // ---- feature-map load: fmap[(row*W + col)*C + c] ----
     input  logic                          wr_en,
@@ -43,7 +47,7 @@ module im2col_gen #(
         sr      = int'(p)*int'(stride) + int'(r) - int'(pad_top);
         sc      = int'(q)*int'(stride) + int'(s) - int'(pad_left);
         inb     = (sr >= 0) && (sr < int'(H)) && (sc >= 0) && (sc < int'(W));
-        srcaddr = (sr*int'(W) + sc)*int'(C) + int'(c);
+        srcaddr = (sr*int'(W) + sc)*int'(Cstride) + int'(cbase) + int'(c);
         coladdr = (int'(p)*int'(Q) + int'(q))*MAXK + (int'(r)*int'(S) + int'(s))*int'(C) + int'(c);
         safe_src = inb ? srcaddr[$clog2(MAXFM)-1:0] : '0;
     end

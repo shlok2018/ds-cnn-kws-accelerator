@@ -70,7 +70,8 @@ module layer_engine #(
     logic signed [7:0]             i2c_rd_data;
     im2col_gen #(.MAXFM(MAXFM), .MAXM(MAXM), .MAXK(MAXK)) u_im2col (
         .clk(clk), .rst(rst), .H(H), .W(W), .C(C), .R(R), .S(S),
-        .stride(stride), .P(P), .Q(Q), .pad_top(pad_top), .pad_left(pad_left),
+        .stride(stride), .P(P), .Q(Q), .Cstride(C), .cbase(8'd0),
+        .pad_top(pad_top), .pad_left(pad_left),
         .wr_en(loading & fm_wr_en), .wr_addr(fm_wr_addr), .wr_data(fm_wr_data),
         .start(i2c_start), .busy(i2c_busy), .done(i2c_done),
         .rd_addr(i2c_rd_addr), .rd_data(i2c_rd_data)
