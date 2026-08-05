@@ -10,12 +10,17 @@ ENG="mac_int8.sv mac_array_8x8.sv gemm_top.sv im2col_gen.sv requant_unit.sv"
 
 # NOTE (2026-08-05): accel_top -- the 8x8 int8 compute core -- maps to the ECP5
 # cleanly (small 64-entry operand/result memories). It is the real "runs on FPGA
-# fabric" result (~54 MHz, one DSP per PE). The large-buffer sequencer engines
-# below are simulation-oriented: the parallel array writes all 64 accumulators
-# per cycle (=64 O_mem write ports) and reads 8 A/W words per cycle (=8 read
-# ports), which do not map to 1-2-port Block RAM without a banked/streamed
-# datapath re-architecture. They are kept here (short timeout) only to document
-# that; the verified functional model lives in the iverilog testbenches.
+# fabric" result (~54 MHz, one DSP per PE). The large-buffer *behavioural* engines
+# (gemm_top and up) are simulation-oriented: the parallel array writes all 64
+# accumulators per cycle (=64 O_mem write ports) and reads 8 A/W words per cycle
+# (=8 read ports), which do not map to 1-2-port Block RAM.
+#
+# UPDATE (2026-08-05): gemm_top_bram is the banked-BRAM re-architecture of that
+# core -- A banked by row%8, W and O banked by col%8, all single-port synchronous
+# banks, with the 64-wide tile writeback serialised over 8 cycles. It is bit-exact
+# vs gemm_top (tb_gemm_bram) and, unlike gemm_top, maps to real DP16KD block RAM
+# (A/W/O all inferred as BRAM) + 64 MULT18X18 DSPs. It is the first sequencer-path
+# datapath that actually fits FPGA fabric; the fit report below quantifies it.
 
 synth() {   # $1 = top, $2 = sources
   echo "======================== $1 ========================"
@@ -39,6 +44,9 @@ synth() {   # $1 = top, $2 = sources
 # The FPGA-fabric result: the compute core.
 synth accel_top    "mac_int8.sv mac_array_8x8.sv accel_top.sv"
 
-# Sequencer engines: documented as synthesis-hostile (short timeout), see note above.
+# The banked-BRAM GEMM core: the sequencer datapath re-architected to fit fabric.
+synth gemm_top_bram "mac_int8.sv mac_array_8x8.sv gemm_top_bram.sv"
+
+# Behavioural sequencer engines: documented as synthesis-hostile (short timeout).
 TMO=120 synth dscnn_seq "$ENG layer_engine.sv dw_engine.sv fc_engine.sv dscnn_seq.sv"
 echo "== done =="
