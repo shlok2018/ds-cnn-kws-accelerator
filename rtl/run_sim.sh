@@ -20,3 +20,5 @@ echo "== single conv/pointwise layer in HW (im2col -> GEMM -> requant chained) =
 iverilog -g2012 -o /tmp/tb_layer.vvp mac_int8.sv mac_array_8x8.sv gemm_top.sv im2col_gen.sv requant_unit.sv layer_engine.sv tb_layer.sv; vvp /tmp/tb_layer.vvp
 echo "== depthwise layer in HW (per-channel conv + requant, all channels) =="
 iverilog -g2012 -o /tmp/tb_dw.vvp mac_int8.sv mac_array_8x8.sv gemm_top.sv im2col_gen.sv requant_unit.sv dw_engine.sv tb_dw.sv; vvp /tmp/tb_dw.vvp
+echo "== FC classifier tail in HW (global avg-pool -> requant -> FC -> argmax) =="
+iverilog -g2012 -o /tmp/tb_fc.vvp mac_int8.sv mac_array_8x8.sv gemm_top.sv requant_unit.sv fc_engine.sv tb_fc.sv; vvp /tmp/tb_fc.vvp
