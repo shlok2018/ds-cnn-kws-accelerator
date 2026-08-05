@@ -1,0 +1,44 @@
+name: FPGA ECP5 fit (Yosys + nextpnr)
+
+# Synthesises the accelerator engines and the full multi-layer sequencer to a
+# Lattice ECP5 and place-and-routes them, on a GitHub x86 runner with the OSS CAD
+# Suite -- reporting LUT/FF/BRAM/DSP usage and Fmax. This is the FPGA counterpart
+# of the ASIC sign-off workflow: all the heavy synthesis/PnR runs in the cloud,
+# nothing on the laptop. Manual trigger.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ecp5-fit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install OSS CAD Suite (yosys + nextpnr-ecp5)
+        run: |
+          cd /tmp
+          URL=$(curl -s https://api.github.com/repos/YosysHQ/oss-cad-suite-build/releases/latest \
+                | grep browser_download_url | grep 'linux-x64' | grep '.tgz' | head -1 | cut -d'"' -f4)
+          echo "downloading $URL"
+          curl -sL "$URL" -o oss.tgz
+          tar xzf oss.tgz
+          echo "/tmp/oss-cad-suite/bin" >> "$GITHUB_PATH"
+
+      - name: Versions
+        run: yosys --version && nextpnr-ecp5 --version 2>&1 | head -1
+
+      - name: ECP5 synthesis + place-and-route fit report
+        working-directory: rtl
+        run: bash fpga_ci.sh | tee "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ecp5-fit-logs
+          path: /tmp/*.log
+          if-no-files-found: warn
