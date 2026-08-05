@@ -61,7 +61,11 @@ optimism. Along the way we correct a common depthwise-modeling pitfall that
 over-counts MACs by \approxs$64\x$ and inflates the ``depthwise starves the
 array'' narrative, and we quantify two energy levers: depthwise/pointwise
 fusion ($-23\%$) and int8$\rightarrow$int4 precision ($-50\%$ energy for under a $1$-point
-top-1 accuracy loss once the 4-bit weights are fine-tuned). The entire flow is
+top-1 accuracy loss once the 4-bit weights are fine-tuned). Finally, a
+synthesizable multi-layer sequencer runs the \emph{complete} ten-layer DS-CNN
+end-to-end in hardware---no software scheduling---bit-exact against a
+static-quantized golden and at \approxs$91\%$ top-1 on real speech, retiring the
+usual ``the accelerator only does the matmuls'' caveat. The entire flow is
 open-source and reproducible.
 \end{abstract}
 
@@ -385,15 +389,29 @@ LUTs, and \approxs$4.1$k flip-flops, and places-and-routes to \approxs$54$\,MHz
 with a flashable bitstream. It is slower than the sky130 ASIC, as FPGA fabric
 generally is, but it makes the design runnable today on a low-cost board.
 
-\emph{End-to-end.} To confirm the datapath runs the real workload and not just
-isolated matmuls, a bit-exact functional model of the array executes the
-\emph{complete} DS-CNN---all nine convolutional layers and the FC classifier,
+\emph{End-to-end, software model.} To confirm the datapath runs the real workload
+and not just isolated matmuls, a bit-exact functional model of the array executes
+the \emph{complete} DS-CNN---all nine convolutional layers and the FC classifier,
 each lowered to the 8$\times$8 int8 tiled matmul the array implements, with
 BatchNorm folded in and int8 requantization between layers---on real MFCC clips.
 It reaches \textbf{92.33\%} top-1 accuracy on the 4\,890-clip MLPerf Tiny test
 set, matching the float reference (92.2\%) and the measured int8 PTQ (92.3\%).
-So the accelerator does not merely multiply---it correctly spots keywords. The
-multi-layer scheduling is software-driven here; a hardware sequencer is future work.
+So the accelerator does not merely multiply---it correctly spots keywords.
+
+\emph{End-to-end, hardware sequencer.} We then move the orchestration itself into
+hardware. A synthesizable multi-layer sequencer (\texttt{dscnn\_seq}) walks a
+per-layer descriptor table and drives three verified engines---a standard/%
+pointwise-convolution engine, a depthwise engine, and the pooling/FC classifier
+tail---each composed of a tiling GEMM unit, an integer requantization/activation
+lane, and an im2col address generator; feature maps chain layer-to-layer through
+ping-pong on-chip buffers, and the terminal FC emits the predicted keyword. Fixed
+hardware cannot use the per-clip \emph{dynamic} activation scales of the software
+model, so we calibrate one \emph{static} per-tensor scale per layer and fold each
+layer to integer requant parameters (a multiplier, shift, and bias). Run on real
+MFCC clips, the whole ten-layer network then executes end-to-end in RTL with
+\emph{no software scheduling}, bit-exact against the static-quantized software
+golden, at \approxs$91\%$ top-1---the accuracy of a fixed-function chip, about a
+point below the dynamic scheme.
 
 \section{Predicted vs. Measured}
 Table~\ref{tab:pvm} reconciles the estimates against synthesis, place-and-route,
@@ -531,6 +549,13 @@ Scope / team & One block, one engineer          & Full SoC, large team, \$10M$+$
 The compute core, control FSM, and operand/result buffers are all implemented in
 RTL and verified (and the accelerator also maps to an ECP5 FPGA at \approxs$54$\,MHz
 with a bitstream); the buffers are behavioral registers, not dense SRAM macros.
+The multi-layer sequencer that runs the whole network is functionally verified in
+RTL simulation (bit-exact against the static-quantized golden); the area, timing,
+and power sign-off numbers are for the 8$\times$8 compute core we placed and
+routed, not the sequencer as a whole. On FPGA that core maps, but the sequencer's
+large behavioral buffers do not infer Block RAM without a banked, streamed
+datapath---the parallel array writes 64 accumulators and reads 8 operands per
+cycle, exceeding a two-port RAM---which we leave to future work.
 The place-and-route now completes full sign-off---DRC-clean (Magic and KLayout),
 LVS-clean (Netgen), and multi-corner post-route STA and power---but two caveats
 remain. OpenLane's design-level antenna \emph{check} is skipped (a late-flow
@@ -544,9 +569,10 @@ The int4 accuracy is measured with weights-only quantization and a short,
 CPU-bounded fine-tune; activation quantization and a fuller precision sweep are
 future work. Finally, a single workload and dataflow family are studied. Future
 work is a narrower or faster accumulator to move past the \approxs$103$\,MHz,
-adder-limited pipelined clock, dense SRAM-macro buffers and on-board FPGA
-bring-up, an accuracy--energy Pareto for reduced precision, and additional
-dataflows.
+adder-limited pipelined clock; dense SRAM-macro buffers and a Block-RAM-friendly
+(banked, streamed) memory datapath so the full sequencer maps to FPGA for
+on-board bring-up; an accuracy--energy Pareto for reduced precision; and
+additional dataflows.
 
 \section{Conclusion}
 We carried a DS-CNN keyword-spotting accelerator from an analytical design-space
@@ -558,7 +584,11 @@ of rigor---\approxs$7\x$ optimistic as an assumed $1$\,GHz, \approxs$139$\,MHz a
 post-placement typical, and \approxs$75$\,MHz once multi-corner post-route
 sign-off is applied---after which pipelining the compute and the accumulator
 read-out recovered the all-corner clock to \approxs$103$\,MHz (a completed
-$143$\,MHz sign-off at the typical corner) at lower area and power. In the
+$143$\,MHz sign-off at the typical corner) at lower area and power. Beyond the
+core, a synthesizable multi-layer sequencer then runs the \emph{complete}
+ten-layer DS-CNN end-to-end in hardware---bit-exact against a static-quantized
+golden at \approxs$91\%$ top-1---so keyword spotting happens on-chip rather than
+being orchestrated in software. In the
 process we corrected a depthwise-modeling pitfall that over-counts MACs
 \approxs$64\x$ and showed the ``depthwise idles the array'' claim to be
 dataflow-dependent, and we quantified fusion ($-23\%$ energy) and precision
