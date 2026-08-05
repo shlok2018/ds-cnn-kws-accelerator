@@ -16,3 +16,5 @@ echo "== requant/activation lane (int32 -> int8 fixed-point requant + ReLU) =="
 iverilog -g2012 -o /tmp/tb_requant.vvp requant_unit.sv tb_requant.sv; vvp /tmp/tb_requant.vvp
 echo "== im2col address generator (conv lowering + SAME padding, DS-CNN shapes) =="
 iverilog -g2012 -o /tmp/tb_im2col.vvp im2col_gen.sv tb_im2col.sv; vvp /tmp/tb_im2col.vvp
+echo "== single conv/pointwise layer in HW (im2col -> GEMM -> requant chained) =="
+iverilog -g2012 -o /tmp/tb_layer.vvp mac_int8.sv mac_array_8x8.sv gemm_top.sv im2col_gen.sv requant_unit.sv layer_engine.sv tb_layer.sv; vvp /tmp/tb_layer.vvp
