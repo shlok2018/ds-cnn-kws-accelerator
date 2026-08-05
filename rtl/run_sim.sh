@@ -14,3 +14,5 @@ echo "== tiling GEMM engine (arbitrary MxK * KxP in HW, all DS-CNN layer shapes)
 iverilog -g2012 -o /tmp/tb_gemm.vvp mac_int8.sv mac_array_8x8.sv gemm_top.sv tb_gemm.sv; vvp /tmp/tb_gemm.vvp
 echo "== requant/activation lane (int32 -> int8 fixed-point requant + ReLU) =="
 iverilog -g2012 -o /tmp/tb_requant.vvp requant_unit.sv tb_requant.sv; vvp /tmp/tb_requant.vvp
+echo "== im2col address generator (conv lowering + SAME padding, DS-CNN shapes) =="
+iverilog -g2012 -o /tmp/tb_im2col.vvp im2col_gen.sv tb_im2col.sv; vvp /tmp/tb_im2col.vvp
