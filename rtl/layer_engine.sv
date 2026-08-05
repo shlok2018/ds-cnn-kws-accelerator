@@ -57,7 +57,7 @@ module layer_engine #(
     assign rd_data = out_mem[rd_addr];
 
     // ---- FSM state + shared counters (ca = row/m, cb = k or oc) ----
-    typedef enum logic [2:0] {S_IDLE,S_IM2COL,S_COPY,S_GEMM,S_GWAIT,S_REQ,S_DONE} state_t;
+    typedef enum logic [2:0] {S_IDLE,S_IM2COL,S_COPY,S_GEMM,S_GWAIT,S_RA,S_REQ,S_DONE} state_t;
     state_t state;
     logic [7:0] ca, cb;
     logic       i2c_start, gemm_start;
@@ -131,14 +131,15 @@ module layer_engine #(
                     end else cb <= cb + 8'd1;
                 end
                 S_GEMM:  begin gemm_start <= 1'b1; state <= S_GWAIT; end
-                S_GWAIT: if (g_done) begin ca <= '0; cb <= '0; state <= S_REQ; end
+                S_GWAIT: if (g_done) begin ca <= '0; cb <= '0; state <= S_RA; end
+                S_RA: state <= S_REQ;                      // present O[ca][cb] addr; data (BRAM) next cycle
                 S_REQ: begin                               // O -> requant -> out
                     out_mem[ca * int'(Cout) + cb] <= req_y;  // int' widens: ca*Cout must not wrap at 8b
                     if (cb == Cout - 1) begin
                         cb <= '0;
                         if (ca == M_ - 1) begin ca <= '0; state <= S_DONE; end
-                        else ca <= ca + 8'd1;
-                    end else cb <= cb + 8'd1;
+                        else begin ca <= ca + 8'd1; state <= S_RA; end
+                    end else begin cb <= cb + 8'd1; state <= S_RA; end
                 end
                 S_DONE: begin busy <= 1'b0; done <= 1'b1; if (!start) state <= S_IDLE; end
                 default: state <= S_IDLE;

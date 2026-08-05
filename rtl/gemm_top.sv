@@ -39,7 +39,10 @@ module gemm_top #(
         if (wr_is_w) W_mem[wr_addr] <= wr_data;
         else         A_mem[wr_addr] <= wr_data;
     end
-    assign rd_data = O_mem[rd_addr];
+    // Registered (synchronous) read so O_mem infers Block RAM on FPGA instead of
+    // LUT-RAM: rd_data is O_mem[rd_addr] one cycle later. Consumers read O with a
+    // 2-cycle (address-then-data) handshake.
+    always_ff @(posedge clk) rd_data <= O_mem[rd_addr];
 
     // ---- the compute core ------------------------------------------------
     logic                clr, en;

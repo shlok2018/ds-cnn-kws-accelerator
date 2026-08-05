@@ -69,10 +69,10 @@ module tb_gemm;
         start = 1; @(negedge clk); start = 0;
         wait (done); @(negedge clk);
 
-        // check every output element
+        // check every output element (registered O read -> wait a clock for data)
         for (int m = 0; m < M; m++)
             for (int p = 0; p < P; p++) begin
-                rd_addr = m*MAXP + p; #1;
+                rd_addr = m*MAXP + p; @(posedge clk); #1;
                 if ($signed(rd_data) !== Oref[m][p]) begin
                     errors++;
                     if (errors <= 10)

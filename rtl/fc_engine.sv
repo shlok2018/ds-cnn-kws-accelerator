@@ -57,7 +57,7 @@ module fc_engine #(
     end
 
     // ---- state + counters ----
-    typedef enum logic [2:0] {S_IDLE,S_POOL,S_LOADA,S_GEMM,S_GWAIT,S_FCOUT,S_DONE} state_t;
+    typedef enum logic [2:0] {S_IDLE,S_POOL,S_LOADA,S_GEMM,S_GWAIT,S_FA,S_FCOUT,S_DONE} state_t;
     state_t state;
     assign loading = (state == S_IDLE);
     logic [7:0]  cc, mm;
@@ -112,11 +112,12 @@ module fc_engine #(
                     if (cc == C-1) begin cc<='0; state<=S_GEMM; end else cc<=cc+8'd1;
                 end
                 S_GEMM:  begin gemm_start<=1'b1; state<=S_GWAIT; end
-                S_GWAIT: if (g_done) begin cc<='0; best<=64'sh8000000000000000; state<=S_FCOUT; end
+                S_GWAIT: if (g_done) begin cc<='0; best<=64'sh8000000000000000; state<=S_FA; end
+                S_FA: state<=S_FCOUT;                      // present O[0][cc] addr; data (BRAM) next cycle
                 S_FCOUT: begin                             // logit[oc] = raw*mult+bias ; argmax
                     logit = $signed(g_rd_data) * $signed(fc_mult[cc]) + $signed(fc_bias[cc]);
                     if (logit > best) begin best <= logit; pred <= cc[3:0]; end
-                    if (cc == NC-1) state <= S_DONE; else cc <= cc + 8'd1;
+                    if (cc == NC-1) state <= S_DONE; else begin cc <= cc + 8'd1; state <= S_FA; end
                 end
                 S_DONE: begin busy<=1'b0; done<=1'b1; if (!start) state<=S_IDLE; end
                 default: state<=S_IDLE;
