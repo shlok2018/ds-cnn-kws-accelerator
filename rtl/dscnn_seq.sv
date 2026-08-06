@@ -57,7 +57,6 @@ module dscnn_seq #(
             else if (pmem_sel==2'd1) pshift[pmem_addr] <= pmem_data[5:0];
             else                     pbias [pmem_addr] <= pmem_data;
         end
-        if (loading & fm_wr_en) bufA[fm_wr_addr] <= fm_wr_data;
     end
 
     logic [3:0] li;
@@ -86,7 +85,15 @@ module dscnn_seq #(
     logic srcB; assign srcB = li[0];
     logic le_a, dw_a, fc_a;
     assign le_a = (dtype==2'd0); assign dw_a = (dtype==2'd1); assign fc_a = (dtype==2'd2);
-    logic signed [7:0] fm_src; assign fm_src = srcB ? bufB[a[$clog2(BUF)-1:0]] : bufA[a[$clog2(BUF)-1:0]];
+    // bufA/bufB banked: one synchronous read port each, address muxed between the
+    // feature-map load (index a during S_LFM) and the external result read (rd_addr).
+    // fm_src/rd_data become registered (1-cycle) reads; the fm-load write control is
+    // pipelined to match (below).
+    logic signed [7:0] bufA_q, bufB_q;
+    logic [$clog2(BUF)-1:0] buf_ra;
+    assign buf_ra = (state==S_LFM) ? a[$clog2(BUF)-1:0] : rd_addr;
+    always_ff @(posedge clk) begin bufA_q <= bufA[buf_ra]; bufB_q <= bufB[buf_ra]; end
+    logic signed [7:0] fm_src; assign fm_src = srcB ? bufB_q : bufA_q;
 
     // ==== ONE shared 8x8 MAC array, time-multiplexed across the three engines ====
     // The engines are instantiated with EXT_GEMM=1, so none has a private array;
@@ -180,20 +187,53 @@ module dscnn_seq #(
     logic signed [7:0] out_rd; assign out_rd = le_a ? le_rd_data : dw_rd_data;
     logic act_done; assign act_done = le_a ? le_done : dw_a ? dw_done : fc_done;
 
+    // ---- wmem banked to BRAM: one synchronous read (muxed address, only one
+    // weight-load state is ever active) + a 1-cycle pipeline on the engine
+    // weight-write control so the write lands with the registered read data.
+    // This removes the 32768-deep combinational read mux (the biggest LUT cost).
+    logic signed [7:0]           wmem_q;
+    logic [$clog2(WMEM)-1:0]     wmem_ra;
+    always_comb wmem_ra = (state==S_LDW) ? (dwoff + oo*int'(rsdim) + kk)
+                        : (state==S_LFCW)? (dwoff + oo*int'(dCo)   + kk)
+                        :                  (dwoff + kk*int'(dCo)   + oo);  // S_LW
+    logic le_w_we_q, dw_w_we_q, fc_w_we_q;
+    logic [$clog2(MAXK*MAXP)-1:0]  le_w_addr_q, fc_w_addr_q;
+    logic [$clog2(MAXC*MAXRS)-1:0] dw_w_addr_q;
+    // fm-load write control, pipelined 1 cycle to match the registered bufA/bufB read
+    logic le_fm_we_q, dw_fm_we_q, fc_fm_we_q;
+    logic [$clog2(BUF)-1:0] fm_addr_q;
+    always_ff @(posedge clk) begin
+        wmem_q      <= wmem[wmem_ra];
+        le_w_we_q   <= (state==S_LW);   le_w_addr_q <= kk*MAXP  + oo;
+        dw_w_we_q   <= (state==S_LDW);  dw_w_addr_q <= oo*MAXRS + kk;
+        fc_w_we_q   <= (state==S_LFCW); fc_w_addr_q <= oo*MAXP  + kk;
+        le_fm_we_q  <= le_a & (state==S_LFM);
+        dw_fm_we_q  <= dw_a & (state==S_LFM);
+        fc_fm_we_q  <= fc_a & (state==S_LFM);
+        fm_addr_q   <= a[$clog2(BUF)-1:0];
+    end
+    // bufA/bufB unified single write port each: load into bufA while idle, and
+    // store the active engine's output into the destination buffer during S_STORE.
+    // One write + one registered read port per buffer => BRAM, not LUT-RAM.
+    always_ff @(posedge clk) begin
+        if ((loading & fm_wr_en) | (state==S_STORE & srcB))      // srcB -> dest is bufA
+            bufA[loading ? fm_wr_addr : a[$clog2(BUF)-1:0]] <= loading ? fm_wr_data : out_rd;
+        if (state==S_STORE & ~srcB)                              // ~srcB -> dest is bufB
+            bufB[a[$clog2(BUF)-1:0]] <= out_rd;
+    end
+
     always_comb begin
-        // feature-map load (only the active engine's fm port enabled)
-        le_fm_we = le_a & (state==S_LFM); le_fm_addr = a[$clog2(BUF)-1:0]; le_fm_data = fm_src;
-        dw_fm_we = dw_a & (state==S_LFM); dw_fm_addr = a[$clog2(BUF)-1:0]; dw_fm_data = fm_src;
-        fc_fm_we = fc_a & (state==S_LFM); fc_fm_addr = a[$clog2(BUF)-1:0]; fc_fm_data = fm_src;
+        // feature-map load: pipelined write control + registered read data (fm_src)
+        le_fm_we = le_fm_we_q; le_fm_addr = fm_addr_q; le_fm_data = fm_src;
+        dw_fm_we = dw_fm_we_q; dw_fm_addr = fm_addr_q; dw_fm_data = fm_src;
+        fc_fm_we = fc_fm_we_q; fc_fm_addr = fm_addr_q; fc_fm_data = fm_src;
         // read addr for store (le/dw share linear index a)
         le_rd_addr = a[$clog2(MAXM*MAXP)-1:0];
         dw_rd_addr = a[$clog2(MAXM*MAXC)-1:0];
-        // conv/pw weights: k*MAXP+oc <- wmem[wo + k*Co + oc]  (kk=k, oo=oc)
-        le_w_we  = (state==S_LW); le_w_addr = kk*MAXP + oo; le_w_data = wmem[dwoff + kk*int'(dCo) + oo];
-        // dw weights: ci*MAXRS+k <- wmem[wo + ci*RS + k]  (oo=ci, kk=k)
-        dw_w_we  = (state==S_LDW); dw_w_addr = oo*MAXRS + kk; dw_w_data = wmem[dwoff + oo*int'(rsdim) + kk];
-        // fc weights: c*MAXP+oc <- wmem[wo + c*NC + oc]  (oo=c, kk=oc)
-        fc_w_we  = (state==S_LFCW); fc_w_addr = oo*MAXP + kk; fc_w_data = wmem[dwoff + oo*int'(dCo) + kk];
+        // weights: pipelined write control (1-cycle delay) + registered wmem read.
+        le_w_we = le_w_we_q; le_w_addr = le_w_addr_q; le_w_data = wmem_q;  // conv/pw
+        dw_w_we = dw_w_we_q; dw_w_addr = dw_w_addr_q; dw_w_data = wmem_q;  // depthwise
+        fc_w_we = fc_w_we_q; fc_w_addr = fc_w_addr_q; fc_w_data = wmem_q;  // fc
         // per-channel requant params (conv/pw -> le, dw -> dw)
         le_pr_we = le_a & (state==S_LP); le_pr_sel = ps; le_pr_addr = pc[$clog2(MAXP)-1:0];
         le_pr_data = (ps==2'd0)? pmult[dpoff+pc] : (ps==2'd1)? {26'b0,pshift[dpoff+pc]} : pbias[dpoff+pc];
@@ -237,9 +277,7 @@ module dscnn_seq #(
                 S_WAIT: if (act_done) begin a<='0;
                             if (fc_a) begin pred<=fc_pred; state<=S_NEXT; end else state<=S_STORE;
                         end
-                S_STORE: begin
-                    if (srcB) bufA[a[$clog2(BUF)-1:0]] <= out_rd;
-                    else      bufB[a[$clog2(BUF)-1:0]] <= out_rd;
+                S_STORE: begin                       // buf writes handled by the unified port above
                     if (a == n_out-1) begin a<='0; state<=S_NEXT; end else a<=a+32'd1;
                 end
                 S_NEXT: if (li == nlayers-1) begin out_in_b <= ~li[0]; state<=S_DONE; end
@@ -250,5 +288,6 @@ module dscnn_seq #(
         end
     end
 
-    assign rd_data = out_in_b ? bufB[rd_addr] : bufA[rd_addr];
+    // registered (1-cycle) external read of the final feature-map buffer
+    assign rd_data = out_in_b ? bufB_q : bufA_q;
 endmodule

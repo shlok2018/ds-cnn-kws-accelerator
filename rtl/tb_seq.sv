@@ -127,7 +127,7 @@ module tb_seq;
         // ---- Test A: conv->dw->pw (nlayers=3), check output map (5x4x8) ----
         load_input(); nlayers=3;
         start=1; @(negedge clk); start=0; wait(done); @(negedge clk);
-        for (int a=0;a<5*4*8;a++) begin rd_addr=a; #1;
+        for (int a=0;a<5*4*8;a++) begin rd_addr=a; @(posedge clk); #1;  // registered (BRAM) read: 1-cycle latency
             if (rd_data!==gB[a]) begin errors++; if(errors<=8) $display("MAP MISMATCH [%0d] got %0d exp %0d",a,rd_data,gB[a]); end end
         $display("  Test A conv->dw->pw map: %s", (errors==0)?"match":"FAIL");
 
