@@ -13,7 +13,8 @@ module fc_engine #(
     parameter int MAXIN = 8192, parameter int MAXC = 64, parameter int MAXNC = 16,
     parameter int MAXM = 128,   parameter int MAXK = 64, parameter int MAXP = 64,
     // EXT_GEMM=1 -> use a shared external gemm via xg_* (see layer_engine).
-    parameter int EXT_GEMM = 0
+    parameter int EXT_GEMM = 0,
+    parameter int EXT_RQ = 0
 ) (
     input  logic                          clk, rst,
     input  logic [7:0]                    M, C, NC,        // positions, channels, classes
@@ -50,7 +51,12 @@ module fc_engine #(
     output logic                          xg_start,
     output logic [$clog2(MAXM*MAXP)-1:0]  xg_rd_addr,
     input  logic                          xg_busy, xg_done,
-    input  logic signed [31:0]            xg_rd_data
+    input  logic signed [31:0]            xg_rd_data,
+    // ---- shared external requant interface (only used when EXT_RQ=1) ----
+    output logic signed [31:0]            xr_acc, xr_bias, xr_mult,
+    output logic [5:0]                    xr_shift,
+    output logic                          xr_relu,
+    input  logic signed [7:0]             xr_y
 );
     localparam int ACCW = 32;
     logic loading;
@@ -82,8 +88,14 @@ module fc_engine #(
     always_comb pool_next = v_sum + fmap[mm*int'(C) + cc];
 
     logic signed [7:0] vqv;
-    requant_unit #(.ACCW(ACCW),.OW(8)) u_pool (
-        .acc(pool_next),.bias(32'sd0),.mult(pool_mult),.shift(pool_shift),.relu(1'b1),.y(vqv));
+    assign xr_acc = pool_next; assign xr_bias = 32'sd0; assign xr_mult = pool_mult;
+    assign xr_shift = pool_shift; assign xr_relu = 1'b1;
+    generate if (EXT_RQ == 0) begin : rq_local
+        requant_unit #(.ACCW(ACCW),.OW(8)) u_pool (
+            .acc(xr_acc),.bias(xr_bias),.mult(xr_mult),.shift(xr_shift),.relu(xr_relu),.y(vqv));
+    end else begin : rq_ext
+        assign vqv = xr_y;
+    end endgenerate
 
     // ---- FC matmul on the array (1 x C)*(C x NC) ----
     logic g_busy, g_done, g_wr_en, g_wr_is_w;

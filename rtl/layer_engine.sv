@@ -16,7 +16,9 @@ module layer_engine #(
     // EXT_GEMM=0: instantiate a private gemm_top_bram (standalone/testbench use).
     // EXT_GEMM=1: no private array -- drive a shared external gemm via the xg_*
     // ports, so the sequencer can time-multiplex ONE 8x8 array across all engines.
-    parameter int EXT_GEMM = 0
+    parameter int EXT_GEMM = 0,
+    // EXT_RQ likewise externalises the requant_unit so one lane is shared.
+    parameter int EXT_RQ = 0
 ) (
     input  logic                          clk, rst,
     // ---- layer geometry ----
@@ -52,7 +54,12 @@ module layer_engine #(
     output logic                          xg_start,
     output logic [$clog2(MAXM*MAXP)-1:0]  xg_rd_addr,
     input  logic                          xg_busy, xg_done,
-    input  logic signed [31:0]            xg_rd_data
+    input  logic signed [31:0]            xg_rd_data,
+    // ---- shared external requant interface (only used when EXT_RQ=1) ----
+    output logic signed [31:0]            xr_acc, xr_bias, xr_mult,
+    output logic [5:0]                    xr_shift,
+    output logic                          xr_relu,
+    input  logic signed [7:0]             xr_y
 );
     localparam int ACCW = 32;
     logic [15:0] M_, K_;
@@ -131,10 +138,16 @@ module layer_engine #(
 
     // ---- requant lane (combinational), driven during S_REQ ----
     logic signed [7:0] req_y;
-    requant_unit #(.ACCW(ACCW), .OW(8)) u_req (
-        .acc(g_rd_data), .bias(bias_mem[cb]), .mult(mult_mem[cb]),
-        .shift(shift_mem[cb]), .relu(relu), .y(req_y)
-    );
+    assign xr_acc = g_rd_data; assign xr_bias = bias_mem[cb]; assign xr_mult = mult_mem[cb];
+    assign xr_shift = shift_mem[cb]; assign xr_relu = relu;
+    generate if (EXT_RQ == 0) begin : rq_local
+        requant_unit #(.ACCW(ACCW), .OW(8)) u_req (
+            .acc(xr_acc), .bias(xr_bias), .mult(xr_mult),
+            .shift(xr_shift), .relu(xr_relu), .y(req_y)
+        );
+    end else begin : rq_ext
+        assign req_y = xr_y;
+    end endgenerate
 
     always_ff @(posedge clk) begin
         if (rst) begin
