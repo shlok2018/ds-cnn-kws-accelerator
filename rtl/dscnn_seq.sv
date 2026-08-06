@@ -88,45 +88,93 @@ module dscnn_seq #(
     assign le_a = (dtype==2'd0); assign dw_a = (dtype==2'd1); assign fc_a = (dtype==2'd2);
     logic signed [7:0] fm_src; assign fm_src = srcB ? bufB[a[$clog2(BUF)-1:0]] : bufA[a[$clog2(BUF)-1:0]];
 
+    // ==== ONE shared 8x8 MAC array, time-multiplexed across the three engines ====
+    // The engines are instantiated with EXT_GEMM=1, so none has a private array;
+    // each exposes its gemm drive on xg_*. Exactly one engine is active per layer
+    // (selected by dtype: le_a/dw_a/fc_a), so muxing the active engine's xg_* onto
+    // a single gemm_top_bram collapses the former 3x64 = 192 DSPs down to 64.
+    logic [$clog2(MAXM+1)-1:0] le_xg_m_dim,dw_xg_m_dim,fc_xg_m_dim;
+    logic [$clog2(MAXK+1)-1:0] le_xg_k_dim,dw_xg_k_dim,fc_xg_k_dim;
+    logic [$clog2(MAXP+1)-1:0] le_xg_p_dim,dw_xg_p_dim,fc_xg_p_dim;
+    logic le_xg_wr_en,dw_xg_wr_en,fc_xg_wr_en;
+    logic le_xg_wr_is_w,dw_xg_wr_is_w,fc_xg_wr_is_w;
+    logic [$clog2(MAXM*MAXK)-1:0] le_xg_wr_addr,dw_xg_wr_addr,fc_xg_wr_addr;
+    logic signed [7:0] le_xg_wr_data,dw_xg_wr_data,fc_xg_wr_data;
+    logic le_xg_start,dw_xg_start,fc_xg_start;
+    logic [$clog2(MAXM*MAXP)-1:0] le_xg_rd_addr,dw_xg_rd_addr,fc_xg_rd_addr;
+    logic g_busy,g_done; logic signed [31:0] g_rd_data;
+
+    logic [$clog2(MAXM+1)-1:0] g_m_dim; logic [$clog2(MAXK+1)-1:0] g_k_dim;
+    logic [$clog2(MAXP+1)-1:0] g_p_dim;
+    logic g_wr_en,g_wr_is_w; logic [$clog2(MAXM*MAXK)-1:0] g_wr_addr;
+    logic signed [7:0] g_wr_data; logic g_start; logic [$clog2(MAXM*MAXP)-1:0] g_rd_addr;
+    always_comb begin
+        g_m_dim   = le_a ? le_xg_m_dim   : dw_a ? dw_xg_m_dim   : fc_xg_m_dim;
+        g_k_dim   = le_a ? le_xg_k_dim   : dw_a ? dw_xg_k_dim   : fc_xg_k_dim;
+        g_p_dim   = le_a ? le_xg_p_dim   : dw_a ? dw_xg_p_dim   : fc_xg_p_dim;
+        g_wr_en   = le_a ? le_xg_wr_en   : dw_a ? dw_xg_wr_en   : fc_xg_wr_en;
+        g_wr_is_w = le_a ? le_xg_wr_is_w : dw_a ? dw_xg_wr_is_w : fc_xg_wr_is_w;
+        g_wr_addr = le_a ? le_xg_wr_addr : dw_a ? dw_xg_wr_addr : fc_xg_wr_addr;
+        g_wr_data = le_a ? le_xg_wr_data : dw_a ? dw_xg_wr_data : fc_xg_wr_data;
+        g_start   = le_a ? le_xg_start   : dw_a ? dw_xg_start   : fc_xg_start;
+        g_rd_addr = le_a ? le_xg_rd_addr : dw_a ? dw_xg_rd_addr : fc_xg_rd_addr;
+    end
+    gemm_top_bram #(.N(8),.ACCW(32),.MAXM(MAXM),.MAXK(MAXK),.MAXP(MAXP)) u_gemm_shared (
+        .clk(clk),.rst(rst),.m_dim(g_m_dim),.k_dim(g_k_dim),.p_dim(g_p_dim),
+        .wr_en(g_wr_en),.wr_is_w(g_wr_is_w),.wr_addr(g_wr_addr),.wr_data(g_wr_data),
+        .start(g_start),.busy(g_busy),.done(g_done),.rd_addr(g_rd_addr),.rd_data(g_rd_data));
+
     // ---- engines ----
     logic le_start,le_done,le_fm_we,le_w_we,le_pr_we;
     logic [$clog2(BUF)-1:0] le_fm_addr; logic signed [7:0] le_fm_data;
     logic [$clog2(MAXK*MAXP)-1:0] le_w_addr; logic signed [7:0] le_w_data;
     logic [1:0] le_pr_sel; logic [$clog2(MAXP)-1:0] le_pr_addr; logic signed [31:0] le_pr_data;
     logic [$clog2(MAXM*MAXP)-1:0] le_rd_addr; logic signed [7:0] le_rd_data;
-    layer_engine #(.MAXFM(BUF),.MAXM(MAXM),.MAXK(MAXK),.MAXP(MAXP)) u_le (
+    layer_engine #(.MAXFM(BUF),.MAXM(MAXM),.MAXK(MAXK),.MAXP(MAXP),.EXT_GEMM(1)) u_le (
         .clk(clk),.rst(rst),.H(dH),.W(dW),.C(dC),.R(dR),.S(dS),.stride(dstr),.Cout(dCo),
         .P(dP),.Q(dQ),.pad_top(dpt),.pad_left(dpl),.relu(drelu),
         .fm_wr_en(le_fm_we),.fm_wr_addr(le_fm_addr),.fm_wr_data(le_fm_data),
         .w_wr_en(le_w_we),.w_wr_addr(le_w_addr),.w_wr_data(le_w_data),
         .pr_wr_en(le_pr_we),.pr_sel(le_pr_sel),.pr_addr(le_pr_addr),.pr_data(le_pr_data),
-        .start(le_start),.busy(),.done(le_done),.rd_addr(le_rd_addr),.rd_data(le_rd_data));
+        .start(le_start),.busy(),.done(le_done),.rd_addr(le_rd_addr),.rd_data(le_rd_data),
+        .xg_m_dim(le_xg_m_dim),.xg_k_dim(le_xg_k_dim),.xg_p_dim(le_xg_p_dim),
+        .xg_wr_en(le_xg_wr_en),.xg_wr_is_w(le_xg_wr_is_w),.xg_wr_addr(le_xg_wr_addr),
+        .xg_wr_data(le_xg_wr_data),.xg_start(le_xg_start),.xg_rd_addr(le_xg_rd_addr),
+        .xg_busy(g_busy),.xg_done(g_done),.xg_rd_data(g_rd_data));
 
     logic dw_start,dw_done,dw_fm_we,dw_w_we,dw_pr_we;
     logic [$clog2(BUF)-1:0] dw_fm_addr; logic signed [7:0] dw_fm_data;
     logic [$clog2(MAXC*MAXRS)-1:0] dw_w_addr; logic signed [7:0] dw_w_data;
     logic [1:0] dw_pr_sel; logic [$clog2(MAXC)-1:0] dw_pr_addr; logic signed [31:0] dw_pr_data;
     logic [$clog2(MAXM*MAXC)-1:0] dw_rd_addr; logic signed [7:0] dw_rd_data;
-    dw_engine #(.MAXFM(BUF),.MAXM(MAXM),.MAXK(MAXK),.MAXP(MAXP),.MAXC(MAXC),.MAXRS(MAXRS)) u_dw (
+    dw_engine #(.MAXFM(BUF),.MAXM(MAXM),.MAXK(MAXK),.MAXP(MAXP),.MAXC(MAXC),.MAXRS(MAXRS),.EXT_GEMM(1)) u_dw (
         .clk(clk),.rst(rst),.H(dH),.W(dW),.C(dC),.R(dR),.S(dS),.stride(dstr),.P(dP),.Q(dQ),
         .pad_top(dpt),.pad_left(dpl),
         .fm_wr_en(dw_fm_we),.fm_wr_addr(dw_fm_addr),.fm_wr_data(dw_fm_data),
         .dw_wr_en(dw_w_we),.dw_wr_addr(dw_w_addr),.dw_wr_data(dw_w_data),
         .pr_wr_en(dw_pr_we),.pr_sel(dw_pr_sel),.pr_addr(dw_pr_addr),.pr_data(dw_pr_data),
-        .start(dw_start),.busy(),.done(dw_done),.rd_addr(dw_rd_addr),.rd_data(dw_rd_data));
+        .start(dw_start),.busy(),.done(dw_done),.rd_addr(dw_rd_addr),.rd_data(dw_rd_data),
+        .xg_m_dim(dw_xg_m_dim),.xg_k_dim(dw_xg_k_dim),.xg_p_dim(dw_xg_p_dim),
+        .xg_wr_en(dw_xg_wr_en),.xg_wr_is_w(dw_xg_wr_is_w),.xg_wr_addr(dw_xg_wr_addr),
+        .xg_wr_data(dw_xg_wr_data),.xg_start(dw_xg_start),.xg_rd_addr(dw_xg_rd_addr),
+        .xg_busy(g_busy),.xg_done(g_done),.xg_rd_data(g_rd_data));
 
     logic fc_start,fc_done,fc_fm_we,fc_w_we,fc_p_we;
     logic [$clog2(BUF)-1:0] fc_fm_addr; logic signed [7:0] fc_fm_data;
     logic [$clog2(MAXK*MAXP)-1:0] fc_w_addr; logic signed [7:0] fc_w_data;
     logic fc_p_sel; logic [$clog2(MAXNC)-1:0] fc_p_addr; logic signed [31:0] fc_p_data;
     logic [3:0] fc_pred;
-    fc_engine #(.MAXIN(BUF),.MAXC(MAXC),.MAXNC(MAXNC),.MAXM(MAXM),.MAXK(MAXK),.MAXP(MAXP)) u_fc (
+    fc_engine #(.MAXIN(BUF),.MAXC(MAXC),.MAXNC(MAXNC),.MAXM(MAXM),.MAXK(MAXK),.MAXP(MAXP),.EXT_GEMM(1)) u_fc (
         .clk(clk),.rst(rst),.M((dH*dW)>>0),.C(dC),.NC(dCo),
         .fm_wr_en(fc_fm_we),.fm_wr_addr(fc_fm_addr),.fm_wr_data(fc_fm_data),
         .w_wr_en(fc_w_we),.w_wr_addr(fc_w_addr),.w_wr_data(fc_w_data),
         .pool_mult(dpmult),.pool_shift(dpshift),
         .fcp_wr_en(fc_p_we),.fcp_sel(fc_p_sel),.fcp_addr(fc_p_addr),.fcp_data(fc_p_data),
-        .start(fc_start),.busy(),.done(fc_done),.rd_addr('0),.vq_data(),.pred(fc_pred));
+        .start(fc_start),.busy(),.done(fc_done),.rd_addr('0),.vq_data(),.pred(fc_pred),
+        .xg_m_dim(fc_xg_m_dim),.xg_k_dim(fc_xg_k_dim),.xg_p_dim(fc_xg_p_dim),
+        .xg_wr_en(fc_xg_wr_en),.xg_wr_is_w(fc_xg_wr_is_w),.xg_wr_addr(fc_xg_wr_addr),
+        .xg_wr_data(fc_xg_wr_data),.xg_start(fc_xg_start),.xg_rd_addr(fc_xg_rd_addr),
+        .xg_busy(g_busy),.xg_done(g_done),.xg_rd_data(g_rd_data));
 
     // ---- shared load muxing ----
     logic signed [7:0] out_rd; assign out_rd = le_a ? le_rd_data : dw_rd_data;

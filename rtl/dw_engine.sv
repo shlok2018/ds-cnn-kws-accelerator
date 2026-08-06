@@ -8,7 +8,9 @@
 // writing the int8 output map interleaved as out[m*C + ci].
 module dw_engine #(
     parameter int MAXFM = 8192, parameter int MAXM = 128, parameter int MAXK = 64,
-    parameter int MAXP = 64,    parameter int MAXC = 64, parameter int MAXRS = 16
+    parameter int MAXP = 64,    parameter int MAXC = 64, parameter int MAXRS = 16,
+    // EXT_GEMM=1 -> use a shared external gemm via xg_* (see layer_engine).
+    parameter int EXT_GEMM = 0
 ) (
     input  logic                          clk, rst,
     input  logic [7:0]                    H, W, C, R, S, stride, P, Q,
@@ -31,7 +33,18 @@ module dw_engine #(
     output logic                          busy, done,
     // output read: out[m*C + ci] (int8)
     input  logic [$clog2(MAXM*MAXC)-1:0]  rd_addr,
-    output logic signed [7:0]             rd_data
+    output logic signed [7:0]             rd_data,
+    // ---- shared external GEMM interface (only used when EXT_GEMM=1) ----
+    output logic [$clog2(MAXM+1)-1:0]     xg_m_dim,
+    output logic [$clog2(MAXK+1)-1:0]     xg_k_dim,
+    output logic [$clog2(MAXP+1)-1:0]     xg_p_dim,
+    output logic                          xg_wr_en, xg_wr_is_w,
+    output logic [$clog2(MAXM*MAXK)-1:0]  xg_wr_addr,
+    output logic signed [7:0]             xg_wr_data,
+    output logic                          xg_start,
+    output logic [$clog2(MAXM*MAXP)-1:0]  xg_rd_addr,
+    input  logic                          xg_busy, xg_done,
+    input  logic signed [31:0]            xg_rd_data
 );
     localparam int ACCW = 32;
     logic [15:0] M_, RS_;
@@ -75,12 +88,21 @@ module dw_engine #(
     logic g_busy, g_done, g_wr_en, g_wr_is_w;
     logic [$clog2(MAXM*MAXK)-1:0] g_wr_addr; logic signed [7:0] g_wr_data;
     logic [$clog2(MAXM*MAXP)-1:0] g_rd_addr; logic signed [ACCW-1:0] g_rd_data;
-    gemm_top #(.N(8),.ACCW(ACCW),.MAXM(MAXM),.MAXK(MAXK),.MAXP(MAXP)) u_gemm (
-        .clk(clk),.rst(rst),.m_dim(M_[$clog2(MAXM+1)-1:0]),
-        .k_dim(RS_[$clog2(MAXK+1)-1:0]),.p_dim(7'd1),
-        .wr_en(g_wr_en),.wr_is_w(g_wr_is_w),.wr_addr(g_wr_addr),.wr_data(g_wr_data),
-        .start(gemm_start),.busy(g_busy),.done(g_done),
-        .rd_addr(g_rd_addr),.rd_data(g_rd_data));
+    assign xg_m_dim   = M_[$clog2(MAXM+1)-1:0];
+    assign xg_k_dim   = RS_[$clog2(MAXK+1)-1:0];
+    assign xg_p_dim   = 7'd1;
+    assign xg_wr_en   = g_wr_en;   assign xg_wr_is_w = g_wr_is_w;
+    assign xg_wr_addr = g_wr_addr; assign xg_wr_data = g_wr_data;
+    assign xg_start   = gemm_start; assign xg_rd_addr = g_rd_addr;
+    generate if (EXT_GEMM == 0) begin : g_local
+        gemm_top_bram #(.N(8),.ACCW(ACCW),.MAXM(MAXM),.MAXK(MAXK),.MAXP(MAXP)) u_gemm (
+            .clk(clk),.rst(rst),.m_dim(xg_m_dim),.k_dim(xg_k_dim),.p_dim(xg_p_dim),
+            .wr_en(xg_wr_en),.wr_is_w(xg_wr_is_w),.wr_addr(xg_wr_addr),.wr_data(xg_wr_data),
+            .start(xg_start),.busy(g_busy),.done(g_done),
+            .rd_addr(xg_rd_addr),.rd_data(g_rd_data));
+    end else begin : g_ext
+        assign g_busy = xg_busy; assign g_done = xg_done; assign g_rd_data = xg_rd_data;
+    end endgenerate
 
     always_comb begin
         i2c_rd_addr = ca * MAXK + cb;
