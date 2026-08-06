@@ -47,6 +47,14 @@ synth accel_top    "mac_int8.sv mac_array_8x8.sv accel_top.sv"
 # The banked-BRAM GEMM core: the sequencer datapath re-architected to fit fabric.
 synth gemm_top_bram "mac_int8.sv mac_array_8x8.sv gemm_top_bram.sv"
 
-# Behavioural sequencer engines: documented as synthesis-hostile (short timeout).
-TMO=120 synth dscnn_seq "$ENG layer_engine.sv dw_engine.sv fc_engine.sv dscnn_seq.sv"
+# UPDATE (2026-08-06): the FULL multi-layer sequencer now maps to fabric. The
+# engines were re-architected -- banked-BRAM gemm core, ONE 8x8 MAC array shared
+# across le/dw/fc (EXT_GEMM), ONE shared requant lane (EXT_RQ), wmem/bufA/bufB
+# banked to BRAM, and im2col column addressing done with counters. It is bit-exact
+# vs the software golden (tb_seq + 6 real-MFCC clips). On ECP5-45 it exceeds the
+# 72-DSP budget (~97 DSP from the shared array + per-layer dimension products), so
+# it is placed on the larger ECP5-85 (156 DSP); the LUT/BRAM/FF all fit ECP5-45.
+SEQ_SRC="mac_int8.sv mac_array_8x8.sv gemm_top_bram.sv im2col_gen.sv requant_unit.sv \
+         layer_engine.sv dw_engine.sv fc_engine.sv dscnn_seq.sv"
+DEV=85k PKG=CABGA381 TMO=1800 synth dscnn_seq "$SEQ_SRC"
 echo "== done =="
