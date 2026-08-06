@@ -65,8 +65,10 @@ top-1 accuracy loss once the 4-bit weights are fine-tuned). Finally, a
 synthesizable multi-layer sequencer runs the \emph{complete} ten-layer DS-CNN
 end-to-end in hardware---no software scheduling---bit-exact against a
 static-quantized golden and at \approxs$91\%$ top-1 on real speech, retiring the
-usual ``the accelerator only does the matmuls'' caveat. The entire flow is
-open-source and reproducible.
+usual ``the accelerator only does the matmuls'' caveat; after banking its
+datapath to Block RAM and time-multiplexing one array and one requant lane across
+the layer engines, the whole sequencer places and routes on an ECP5-85 FPGA. The
+entire flow is open-source and reproducible.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -413,6 +415,23 @@ MFCC clips, the whole ten-layer network then executes end-to-end in RTL with
 golden, at \approxs$91\%$ top-1---the accuracy of a fixed-function chip, about a
 point below the dynamic scheme.
 
+\emph{Full network on FPGA.} This sequencer is not simulation-only. Mapping it to
+fabric requires an FPGA-oriented datapath: the tiling GEMM's operand and result
+memories are banked into single-port \emph{synchronous} block RAM (A by row, W and
+O by column, and the former 64-wide tile write-back serialized over eight cycles),
+which alone takes the core from an un-mappable 64-write-port register blob to
+inferred Block RAM; one $8\times8$ MAC array and one requantization lane are then
+time-multiplexed across all three engines (only one runs per layer), collapsing
+$3\times64$ to $64$ DSPs; and the sequencer's weight and ping-pong feature-map
+buffers are likewise banked to block RAM. With these changes the \emph{entire}
+\texttt{dscnn\_seq}---every one of the ten layers, still bit-exact against the
+static-quantized golden---places and routes on a Lattice ECP5-85 through the open
+Yosys\,+\,nextpnr flow, using $97$ DSP multipliers ($62\%$), $68$ block RAMs
+($32\%$), and $90\%$ of the LUTs, and closing at \approxs$13$\,MHz. The critical
+path is the shared, \emph{unpipelined} requantization multiplier---the natural next
+pipelining target, exactly as the read-out mux was for the ASIC. This is the whole
+network, not merely the compute core, running on commodity FPGA fabric.
+
 \section{Predicted vs. Measured}
 Table~\ref{tab:pvm} reconciles the estimates against synthesis, place-and-route,
 and full multi-corner post-route sign-off. Area is on different nodes, so a fair
@@ -550,12 +569,18 @@ The compute core, control FSM, and operand/result buffers are all implemented in
 RTL and verified (and the accelerator also maps to an ECP5 FPGA at \approxs$54$\,MHz
 with a bitstream); the buffers are behavioral registers, not dense SRAM macros.
 The multi-layer sequencer that runs the whole network is functionally verified in
-RTL simulation (bit-exact against the static-quantized golden); the area, timing,
-and power sign-off numbers are for the 8$\times$8 compute core we placed and
-routed, not the sequencer as a whole. On FPGA that core maps, but the sequencer's
-large behavioral buffers do not infer Block RAM without a banked, streamed
-datapath---the parallel array writes 64 accumulators and reads 8 operands per
-cycle, exceeding a two-port RAM---which we leave to future work.
+RTL simulation (bit-exact against the static-quantized golden); the \emph{ASIC}
+area, timing, and power sign-off numbers, however, are for the 8$\times$8 compute
+core we placed and routed, not the sequencer as a whole. The \emph{FPGA} mapping,
+by contrast, now covers the entire sequencer: banking the array and buffer
+memories into synchronous Block RAM and time-multiplexing one array/requant lane
+across the engines takes the full network from un-mappable---the parallel array
+originally wrote 64 accumulators and read 8 operands per cycle, exceeding a
+two-port RAM---to a completed ECP5-85 place-and-route, though at a low
+\approxs$13$\,MHz set by the unpipelined requantization multiplier and with $90\%$
+LUT utilization. It does not fit the smaller ECP5-45 (both DSP and LUT exceed it);
+the residual DSPs are per-layer dimension products that would move into the
+descriptor, which we leave to future work.
 The place-and-route now completes full sign-off---DRC-clean (Magic and KLayout),
 LVS-clean (Netgen), and multi-corner post-route STA and power---but two caveats
 remain. OpenLane's design-level antenna \emph{check} is skipped (a late-flow
@@ -569,10 +594,10 @@ The int4 accuracy is measured with weights-only quantization and a short,
 CPU-bounded fine-tune; activation quantization and a fuller precision sweep are
 future work. Finally, a single workload and dataflow family are studied. Future
 work is a narrower or faster accumulator to move past the \approxs$103$\,MHz,
-adder-limited pipelined clock; dense SRAM-macro buffers and a Block-RAM-friendly
-(banked, streamed) memory datapath so the full sequencer maps to FPGA for
-on-board bring-up; an accuracy--energy Pareto for reduced precision; and
-additional dataflows.
+adder-limited pipelined clock; pipelining the shared requantization multiplier to
+lift the full-sequencer FPGA clock past its \approxs$13$\,MHz first-cut and taking
+the routed bitstream to on-board bring-up; dense SRAM-macro buffers for the ASIC;
+an accuracy--energy Pareto for reduced precision; and additional dataflows.
 
 \section{Conclusion}
 We carried a DS-CNN keyword-spotting accelerator from an analytical design-space
